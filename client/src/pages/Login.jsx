@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { GraduationCap, Users, Shield, ArrowRight, Smartphone, Lock, X, Building2, Camera, CheckCircle2, Sparkles, User, BookOpen, CheckSquare, Square, KeyRound, AlertTriangle, ShieldCheck, Hash, Fingerprint } from 'lucide-react';
+import { GraduationCap, Users, Shield, ArrowRight, Smartphone, Lock, X, Building2, Camera, CheckCircle2, Sparkles, User, BookOpen, CheckSquare, Square, KeyRound, AlertTriangle, ShieldCheck, Hash, Key } from 'lucide-react';
 import { createWorker } from 'tesseract.js';
 import { api } from '../services/api';
 import { getDeviceIdentity } from '../services/fingerprint';
@@ -102,7 +102,6 @@ function toTitleCase(str) {
     .join(' ');
 }
 
-// iOS & Android Compatible Canvas Compressor
 function compressImage(file) {
   return new Promise((resolve) => {
     const reader = new FileReader();
@@ -152,14 +151,19 @@ export function Login({ onLoginSuccess }) {
   const [ocrSuccessMsg, setOcrSuccessMsg] = useState('');
   const fileInputRef = useRef(null);
 
-  // Teacher dynamic form state with Passcode Protection
+  // Teacher dynamic form state with Individual Password Setup
   const [teacherName, setTeacherName] = useState('Dr. A. K. Sharma');
   const [teacherDept, setTeacherDept] = useState('comp');
   const [selectedDivisions, setSelectedDivisions] = useState(['SY-A']);
   const [teacherSubject, setTeacherSubject] = useState(DEFAULT_SUBJECTS['comp'][0]);
   const [customSubject, setCustomSubject] = useState('');
   const [teacherBatch, setTeacherBatch] = useState('All');
-  const [facultyPasscode, setFacultyPasscode] = useState('');
+  
+  // Teacher individual password state
+  const [teacherIsFirstTime, setTeacherIsFirstTime] = useState(false);
+  const [teacherPassword, setTeacherPassword] = useState('');
+  const [teacherNewPassword, setTeacherNewPassword] = useState('');
+  const [teacherConfirmPassword, setTeacherConfirmPassword] = useState('');
 
   // 2-Tier HOD Admin Modal State
   const [showAdminModal, setShowAdminModal] = useState(false);
@@ -182,6 +186,17 @@ export function Login({ onLoginSuccess }) {
       setShowAdminModal(true);
     }
   }, []);
+
+  // Check teacher status when name changes
+  useEffect(() => {
+    if (activeTab === 'teacher' && teacherName.trim()) {
+      api.checkTeacherStatus({ teacherName: teacherName.trim(), department: teacherDept })
+        .then(res => {
+          if (res.success) setTeacherIsFirstTime(res.isFirstTime);
+        })
+        .catch(() => {});
+    }
+  }, [teacherName, teacherDept, activeTab]);
 
   const handleTeacherDeptChange = (newDept) => {
     setTeacherDept(newDept);
@@ -310,32 +325,51 @@ export function Login({ onLoginSuccess }) {
     }
   };
 
+  // TEACHER AUTH (Individual Password Setup & Login)
   const handleTeacherLogin = async (e) => {
     e.preventDefault();
     if (!teacherName.trim()) return setError('Please enter Faculty Name');
-    if (!facultyPasscode) return setError('Please enter the Faculty Security Passcode');
     if (selectedDivisions.length === 0) return setError('Please select at least one Division (SY-A, SY-B, or SY-C)');
     const finalSubject = customSubject.trim() ? customSubject.trim() : teacherSubject;
     if (!finalSubject) return setError('Please select or type a subject');
 
+    if (teacherIsFirstTime) {
+      if (!teacherNewPassword || teacherNewPassword.length < 4) {
+        return setError('Please create a password with at least 4 characters');
+      }
+      if (teacherNewPassword !== teacherConfirmPassword) {
+        return setError('Passwords do not match');
+      }
+    } else if (!teacherPassword) {
+      return setError('Please enter your Faculty Password');
+    }
+
     setError('');
     setLoading(true);
     try {
-      await api.verifyFacultyPasscode(facultyPasscode);
-
-      const teacherProfile = {
-        id: `T_${teacherDept}_${Date.now()}`,
-        name: teacherName.trim(),
+      const authRes = await api.teacherAuth({
+        teacherName: teacherName.trim(),
         department: teacherDept,
-        divisions: selectedDivisions,
-        division: selectedDivisions.join(', '),
-        subjectName: finalSubject,
-        batch: teacherBatch,
-        role: 'teacher'
-      };
-      onLoginSuccess('teacher', teacherProfile);
+        password: teacherPassword,
+        newPassword: teacherNewPassword,
+        isFirstTimeSetup: teacherIsFirstTime
+      });
+
+      if (authRes.success) {
+        const teacherProfile = {
+          id: authRes.teacher?.id || `T_${teacherDept}_${Date.now()}`,
+          name: teacherName.trim(),
+          department: teacherDept,
+          divisions: selectedDivisions,
+          division: selectedDivisions.join(', '),
+          subjectName: finalSubject,
+          batch: teacherBatch,
+          role: 'teacher'
+        };
+        onLoginSuccess('teacher', teacherProfile);
+      }
     } catch (err) {
-      setError(err.message || 'Invalid Faculty Security Passcode. Access restricted.');
+      setError(err.message || 'Faculty Authentication Failed.');
     } finally {
       setLoading(false);
     }
@@ -454,21 +488,20 @@ export function Login({ onLoginSuccess }) {
             </div>
           )}
 
-          {/* STUDENT LOGIN TAB (AI ID CARD AUTO-FILL + MANUAL ROLL NO) */}
+          {/* STUDENT LOGIN TAB */}
           {activeTab === 'student' && (
             <form onSubmit={handleStudentLogin} className="space-y-4">
               
-              {/* MANDATORY ID CARD UPLOAD & AI OCR (iOS & Android Compatible) */}
+              {/* MANDATORY ID CARD UPLOAD & AI OCR (iOS & Android) */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center justify-between">
                   <span className="flex items-center space-x-1.5 text-indigo-700">
                     <Camera className="w-3.5 h-3.5" />
                     <span>Upload / Snap College ID Card <span className="text-rose-500 font-bold">*REQUIRED</span></span>
                   </span>
-                  <span className="text-[10px] text-slate-400 font-normal normal-case">iOS & Android Ready</span>
+                  <span className="text-[10px] text-slate-400 font-normal normal-case">iOS & Android</span>
                 </label>
 
-                {/* Native file input with iOS Safari support */}
                 <input
                   type="file"
                   ref={fileInputRef}
@@ -672,7 +705,7 @@ export function Login({ onLoginSuccess }) {
             </form>
           )}
 
-          {/* TEACHER / FACULTY TAB (Passcode Protected) */}
+          {/* TEACHER / FACULTY TAB (Individual Private Password Setup & Login) */}
           {activeTab === 'teacher' && (
             <form onSubmit={handleTeacherLogin} className="space-y-4">
               
@@ -798,21 +831,53 @@ export function Login({ onLoginSuccess }) {
                 </select>
               </div>
 
-              {/* FACULTY SECURITY PASSCODE */}
+              {/* INDIVIDUAL FACULTY PASSWORD (First-Time Setup vs Normal Login) */}
               <div className="pt-1">
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center space-x-1.5">
-                  <KeyRound className="w-3.5 h-3.5 text-indigo-600" />
-                  <span>Faculty Security Passcode</span>
-                </label>
-                <input
-                  type="password"
-                  value={facultyPasscode}
-                  onChange={(e) => setFacultyPasscode(e.target.value)}
-                  placeholder="Enter faculty passcode"
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 font-semibold focus:border-indigo-600 focus:bg-white outline-none"
-                  required
-                />
-                <p className="text-[10px] text-slate-400 mt-1">Default passcode: <code className="text-slate-600 font-mono">faculty@2026</code></p>
+                {teacherIsFirstTime ? (
+                  <div className="p-3.5 rounded-2xl bg-indigo-50/70 border border-indigo-200 space-y-2.5">
+                    <div className="text-xs font-bold text-indigo-900 flex items-center space-x-1.5">
+                      <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+                      <span>First-Time Setup: Set your Faculty Password</span>
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Create Password</label>
+                      <input
+                        type="password"
+                        value={teacherNewPassword}
+                        onChange={(e) => setTeacherNewPassword(e.target.value)}
+                        placeholder="Min. 4 characters"
+                        className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 outline-none focus:border-indigo-600"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Confirm Password</label>
+                      <input
+                        type="password"
+                        value={teacherConfirmPassword}
+                        onChange={(e) => setTeacherConfirmPassword(e.target.value)}
+                        placeholder="Repeat password"
+                        className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 outline-none focus:border-indigo-600"
+                        required
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center space-x-1.5">
+                      <KeyRound className="w-3.5 h-3.5 text-indigo-600" />
+                      <span>Faculty Private Password</span>
+                    </label>
+                    <input
+                      type="password"
+                      value={teacherPassword}
+                      onChange={(e) => setTeacherPassword(e.target.value)}
+                      placeholder="Enter your faculty password"
+                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 font-semibold focus:border-indigo-600 focus:bg-white outline-none"
+                      required
+                    />
+                  </div>
+                )}
               </div>
 
               <div className="pt-2">
@@ -821,7 +886,7 @@ export function Login({ onLoginSuccess }) {
                   disabled={loading}
                   className="w-full py-3.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm shadow-lg shadow-indigo-200 flex items-center justify-center space-x-2 transition-all active:scale-[0.98]"
                 >
-                  <span>Launch Faculty Dashboard</span>
+                  <span>{teacherIsFirstTime ? 'Save Password & Launch Dashboard' : 'Launch Faculty Dashboard'}</span>
                   <ArrowRight className="w-4 h-4" />
                 </button>
               </div>

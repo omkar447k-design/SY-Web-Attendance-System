@@ -55,15 +55,18 @@ export const api = {
     return request(`/api/admin/students${query ? `?${query}` : ''}`);
   },
   addStudent: (data) => request('/api/admin/students', { method: 'POST', body: JSON.stringify(data) }),
+  deleteStudent: (studentId) => request(`/api/admin/students/${studentId}/delete`, { method: 'POST' }),
   resetStudentDevice: (studentId) => request(`/api/admin/students/${studentId}/reset-device`, { method: 'POST' }),
+  resetTeacherPassword: (teacherId) => request(`/api/admin/teachers/${teacherId}/reset-password`, { method: 'POST' }),
   getSettings: () => request('/api/admin/settings'),
   updateSettings: (data) => request('/api/admin/settings', { method: 'POST', body: JSON.stringify(data) }),
   getTeachers: () => request('/api/admin/teachers'),
   getSubjects: () => request('/api/admin/subjects'),
   getMasterExcelUrl: (division = 'SY-A') => `${API_BASE}/api/admin/export/master?division=${division}`,
 
-  // Teacher & Faculty Passcode
-  verifyFacultyPasscode: (passcode) => request('/api/teacher/verify-passcode', { method: 'POST', body: JSON.stringify({ passcode }) }),
+  // Teacher Auth (Individual First-Time Password Setup & Login)
+  teacherAuth: (data) => request('/api/teacher/auth', { method: 'POST', body: JSON.stringify(data) }),
+  checkTeacherStatus: (data) => request('/api/teacher/check-status', { method: 'POST', body: JSON.stringify(data) }),
   getTeacherActiveSession: (teacherId) => request(`/api/teacher/session/active${teacherId ? `?teacherId=${teacherId}` : ''}`),
   startSession: (data) => request('/api/teacher/session/start', { method: 'POST', body: JSON.stringify(data) }),
   extendSession: (sessionId, extraMinutes = 1) => request('/api/teacher/session/extend', { method: 'POST', body: JSON.stringify({ sessionId, extraMinutes }) }),
@@ -71,7 +74,7 @@ export const api = {
   manualMarkAttendance: (sessionId, rollNo) => request('/api/teacher/session/manual-mark', { method: 'POST', body: JSON.stringify({ sessionId, rollNo }) }),
   getSessionExcelUrl: (sessionId) => `${API_BASE}/api/teacher/session/${sessionId}/export`,
 
-  // Student (Strict Verification & Hardware Binding)
+  // Student
   studentLogin: (data) => request('/api/student/login', { method: 'POST', body: JSON.stringify(data) }),
   getStudentActiveSession: (division, studentId, department) => request(`/api/student/session/active?division=${division || 'SY-A'}&studentId=${studentId || ''}&department=${department || 'comp'}`),
   submitPin: (data) => request('/api/student/attendance/submit', { method: 'POST', body: JSON.stringify(data) }),

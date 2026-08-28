@@ -5,7 +5,6 @@ import { ExcelService } from '../services/excelService.js';
 const loginAttempts = new Map();
 
 export class AdminController {
-  // Tier 1: Gatekeeper Verification to open the HOD Modal
   static verifyGatekeeper(req, res) {
     const { code } = req.body;
     const settings = db.getSettings();
@@ -13,7 +12,6 @@ export class AdminController {
 
     if (code === validCode || code === 'admin' || code === 'HOD@ADMIN2026') {
       const hodAccounts = db.getHodAccounts();
-      // Return list of departments with first-time setup status (without passwords)
       const deptStatus = Object.keys(hodAccounts).map(deptKey => ({
         id: deptKey,
         name: hodAccounts[deptKey].name,
@@ -33,7 +31,6 @@ export class AdminController {
     });
   }
 
-  // Tier 2: Department-Specific HOD Login & First-Time Password Setup Wizard
   static login(req, res) {
     const ip = req.ip || req.connection?.remoteAddress || 'unknown';
     const now = Date.now();
@@ -53,7 +50,6 @@ export class AdminController {
     const hodAccounts = db.getHodAccounts();
     const hod = hodAccounts[department] || { department, name: `HOD ${department.toUpperCase()}`, password: null, isFirstTime: true };
 
-    // Case 1: First-Time Setup for this HOD
     if (isFirstTimeSetup || hod.isFirstTime || !hod.password) {
       if (!newPassword || newPassword.length < 6) {
         return res.status(400).json({
@@ -62,7 +58,6 @@ export class AdminController {
         });
       }
 
-      // Save HOD's private password
       db.setHodAccount(department, {
         password: newPassword,
         isFirstTime: false,
@@ -81,7 +76,6 @@ export class AdminController {
       });
     }
 
-    // Case 2: Subsequent Login with saved private password
     const validPassword = hod.password || 'admin';
     if (password === validPassword || password === 'admin') {
       loginAttempts.delete(ip);
@@ -95,7 +89,6 @@ export class AdminController {
       });
     }
 
-    // Failed Attempt Handling
     const record = loginAttempts.get(ip) || { attempts: 0, lockedUntil: null };
     record.attempts += 1;
 
@@ -133,7 +126,6 @@ export class AdminController {
     res.json({ success: true, message: `✅ HOD password updated successfully for ${hod ? hod.name : department}!` });
   }
 
-  // Real-Time Audit Log Feed (Verified Student Logins & ID Cards)
   static getLoginLogs(req, res) {
     const { department, limit = 50 } = req.query;
     const logs = db.getLogs(Number(limit), department);
@@ -258,6 +250,43 @@ export class AdminController {
     res.json({ success: true, data: newStudent });
   }
 
+  // HOD EXPEL / DELETE SUSPICIOUS STUDENT
+  static deleteStudent(req, res) {
+    const { studentId } = req.params;
+    let students = db.get('students');
+    const target = students.find(s => s.id === studentId || s.rollNo === Number(studentId));
+
+    if (!target) {
+      return res.status(404).json({ success: false, error: 'Student record not found' });
+    }
+
+    // Remove from students roster
+    students = students.filter(s => s.id !== target.id && s.rollNo !== target.rollNo);
+    db.set('students', students);
+
+    // Remove attendance records
+    let attendance = db.get('attendance');
+    attendance = attendance.filter(a => a.studentId !== target.id);
+    db.set('attendance', attendance);
+
+    // Add Audit Log
+    db.addLog({
+      type: 'STUDENT_EXPELLED_BY_HOD',
+      studentId: target.id,
+      studentName: target.name,
+      rollNo: target.rollNo,
+      department: target.department,
+      division: target.division,
+      status: 'DELETED_BY_HOD',
+      details: `HOD removed Roll No. ${target.rollNo} (${target.name}) due to suspicious/invalid ID verification`
+    });
+
+    res.json({
+      success: true,
+      message: `🗑️ Student Roll No. ${target.rollNo} (${target.name}) has been completely removed from the database.`
+    });
+  }
+
   static resetDevice(req, res) {
     const { studentId } = req.params;
     const result = DeviceService.resetStudentDevice(studentId);
@@ -279,7 +308,30 @@ export class AdminController {
   }
 
   static getTeachers(req, res) {
-    res.json({ success: true, data: db.get('teachers') });
+    const teachers = db.get('teachers').map(t => {
+      const { password, ...safeTeacher } = t;
+      return safeTeacher;
+    });
+    res.json({ success: true, data: teachers });
+  }
+
+  static resetTeacherPassword(req, res) {
+    const { teacherId } = req.params;
+    const teachers = db.get('teachers');
+    const teacher = teachers.find(t => t.id === teacherId || t.name === teacherId);
+
+    if (!teacher) {
+      return res.status(404).json({ success: false, error: 'Teacher not found' });
+    }
+
+    teacher.password = null;
+    teacher.isFirstTime = true;
+    db.set('teachers', teachers);
+
+    res.json({
+      success: true,
+      message: `✅ Password for ${teacher.name} has been reset. Teacher can create a new password on next login.`
+    });
   }
 
   static getSubjects(req, res) {

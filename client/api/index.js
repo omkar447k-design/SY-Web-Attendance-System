@@ -7,7 +7,7 @@ import { StudentController } from './controllers/studentController.js';
 
 const app = express();
 app.use(cors());
-app.use(express.json({ limit: '10mb' })); // Support base64 ID photos
+app.use(express.json({ limit: '10mb' }));
 
 // Health Check
 app.get('/api/health', (req, res) => {
@@ -22,22 +22,86 @@ app.get('/api/admin/logs', AdminController.getLoginLogs);
 app.get('/api/admin/stats', AdminController.getStats);
 app.get('/api/admin/students', AdminController.getStudents);
 app.post('/api/admin/students', AdminController.addStudent);
+app.post('/api/admin/students/:studentId/delete', AdminController.deleteStudent);
 app.post('/api/admin/students/:studentId/reset-device', AdminController.resetDevice);
+app.post('/api/admin/teachers/:teacherId/reset-password', AdminController.resetTeacherPassword);
 app.get('/api/admin/settings', AdminController.getSettings);
 app.post('/api/admin/settings', AdminController.updateSettings);
 app.get('/api/admin/teachers', AdminController.getTeachers);
 app.get('/api/admin/subjects', AdminController.getSubjects);
 app.get('/api/admin/export/master', AdminController.exportMasterExcel);
 
-// Teacher Routes (Faculty Passcode Protection)
-app.post('/api/teacher/verify-passcode', (req, res) => {
-  const { passcode } = req.body;
-  const settings = db.getSettings();
-  const valid = passcode === settings.facultyPassword || passcode === 'faculty@2026' || passcode === 'faculty123';
-  if (valid) {
-    return res.json({ success: true, message: 'Faculty access granted' });
+// Teacher Routes (Individual Teacher First-Time Setup & Login)
+app.post('/api/teacher/auth', (req, res) => {
+  const { teacherName, department = 'comp', password, newPassword, isFirstTimeSetup } = req.body;
+  if (!teacherName || !teacherName.trim()) {
+    return res.status(400).json({ success: false, error: 'Faculty Name is required' });
   }
-  return res.status(401).json({ success: false, error: 'Invalid Faculty Security Passcode' });
+
+  const teachers = db.get('teachers');
+  const cleanName = teacherName.trim();
+  let teacher = teachers.find(t => t.name.toLowerCase() === cleanName.toLowerCase() && t.department === department);
+
+  // Auto-register teacher if new
+  if (!teacher) {
+    teacher = {
+      id: `T_${department}_${Date.now()}`,
+      name: cleanName,
+      department,
+      email: `${cleanName.toLowerCase().replace(/[^a-z0-9]/g, '')}@college.edu`,
+      role: 'Teacher',
+      password: null,
+      isFirstTime: true
+    };
+    teachers.push(teacher);
+    db.set('teachers', teachers);
+  }
+
+  // Case 1: First-time setup for this teacher
+  if (isFirstTimeSetup || teacher.isFirstTime || !teacher.password) {
+    if (!newPassword || newPassword.length < 4) {
+      return res.status(400).json({ success: false, error: 'Please enter a password with at least 4 characters.' });
+    }
+
+    teacher.password = newPassword;
+    teacher.isFirstTime = false;
+    db.set('teachers', teachers);
+
+    return res.json({
+      success: true,
+      isFirstTime: false,
+      message: `🎉 Password set for ${teacher.name}!`,
+      teacher: { id: teacher.id, name: teacher.name, department: teacher.department, role: 'teacher' }
+    });
+  }
+
+  // Case 2: Standard Login
+  const settings = db.getSettings();
+  const valid = teacher.password === password || password === settings.facultyPassword || password === 'faculty@2026';
+
+  if (valid) {
+    return res.json({
+      success: true,
+      teacher: { id: teacher.id, name: teacher.name, department: teacher.department, role: 'teacher' }
+    });
+  }
+
+  return res.status(401).json({ success: false, error: 'Incorrect Faculty Password.' });
+});
+
+// Check if teacher needs first-time setup
+app.post('/api/teacher/check-status', (req, res) => {
+  const { teacherName, department = 'comp' } = req.body;
+  if (!teacherName || !teacherName.trim()) {
+    return res.json({ success: true, isFirstTime: true });
+  }
+
+  const teachers = db.get('teachers');
+  const cleanName = teacherName.trim();
+  const teacher = teachers.find(t => t.name.toLowerCase() === cleanName.toLowerCase() && t.department === department);
+
+  const isFirstTime = !teacher || teacher.isFirstTime || !teacher.password;
+  res.json({ success: true, isFirstTime });
 });
 
 app.get('/api/teacher/session/active', TeacherController.getActiveSession);
@@ -47,7 +111,7 @@ app.post('/api/teacher/session/end', TeacherController.endSession);
 app.post('/api/teacher/session/manual-mark', TeacherController.manualMark);
 app.get('/api/teacher/session/:sessionId/export', TeacherController.exportSessionExcel);
 
-// Student Routes (Strict ID Verification & Device Lock)
+// Student Routes
 app.post('/api/student/login', StudentController.login);
 app.get('/api/student/session/active', StudentController.getActiveSession);
 app.post('/api/student/attendance/submit', StudentController.submitPin);

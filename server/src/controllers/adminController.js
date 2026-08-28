@@ -250,6 +250,39 @@ export class AdminController {
     res.json({ success: true, data: newStudent });
   }
 
+  static deleteStudent(req, res) {
+    const { studentId } = req.params;
+    let students = db.get('students');
+    const target = students.find(s => s.id === studentId || s.rollNo === Number(studentId));
+
+    if (!target) {
+      return res.status(404).json({ success: false, error: 'Student record not found' });
+    }
+
+    students = students.filter(s => s.id !== target.id && s.rollNo !== target.rollNo);
+    db.set('students', students);
+
+    let attendance = db.get('attendance');
+    attendance = attendance.filter(a => a.studentId !== target.id);
+    db.set('attendance', attendance);
+
+    db.addLog({
+      type: 'STUDENT_EXPELLED_BY_HOD',
+      studentId: target.id,
+      studentName: target.name,
+      rollNo: target.rollNo,
+      department: target.department,
+      division: target.division,
+      status: 'DELETED_BY_HOD',
+      details: `HOD removed Roll No. ${target.rollNo} (${target.name}) due to suspicious/invalid ID verification`
+    });
+
+    res.json({
+      success: true,
+      message: `🗑️ Student Roll No. ${target.rollNo} (${target.name}) has been completely removed from the database.`
+    });
+  }
+
   static resetDevice(req, res) {
     const { studentId } = req.params;
     const result = DeviceService.resetStudentDevice(studentId);
@@ -271,7 +304,30 @@ export class AdminController {
   }
 
   static getTeachers(req, res) {
-    res.json({ success: true, data: db.get('teachers') });
+    const teachers = db.get('teachers').map(t => {
+      const { password, ...safeTeacher } = t;
+      return safeTeacher;
+    });
+    res.json({ success: true, data: teachers });
+  }
+
+  static resetTeacherPassword(req, res) {
+    const { teacherId } = req.params;
+    const teachers = db.get('teachers');
+    const teacher = teachers.find(t => t.id === teacherId || t.name === teacherId);
+
+    if (!teacher) {
+      return res.status(404).json({ success: false, error: 'Teacher not found' });
+    }
+
+    teacher.password = null;
+    teacher.isFirstTime = true;
+    db.set('teachers', teachers);
+
+    res.json({
+      success: true,
+      message: `✅ Password for ${teacher.name} has been reset. Teacher can create a new password on next login.`
+    });
   }
 
   static getSubjects(req, res) {
