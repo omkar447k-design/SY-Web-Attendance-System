@@ -24,6 +24,34 @@ app.set('io', io);
 app.use(cors());
 app.use(express.json());
 
+// Root Landing Route
+app.get('/', (req, res) => {
+  res.send(`
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <title>SY Attendance Backend Server</title>
+        <style>
+          body { font-family: system-ui, sans-serif; background: #0f172a; color: #f8fafc; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+          .card { background: #1e293b; padding: 2.5rem; border-radius: 1.5rem; border: 1px solid #334155; text-align: center; max-width: 480px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5); }
+          .badge { display: inline-block; background: rgba(16,185,129,0.2); color: #34d399; padding: 0.25rem 0.75rem; border-radius: 9999px; font-weight: bold; font-size: 0.75rem; margin-bottom: 1rem; border: 1px solid rgba(16,185,129,0.3); }
+          h1 { margin: 0 0 0.5rem 0; font-size: 1.5rem; }
+          p { color: #94a3b8; font-size: 0.875rem; margin: 0.5rem 0 1.5rem 0; line-height: 1.5; }
+          a { color: #818cf8; text-decoration: none; font-weight: bold; }
+        </style>
+      </head>
+      <body>
+        <div class="card">
+          <div class="badge">● SERVER ACTIVE & RUNNING</div>
+          <h1>SY Attendance Backend API</h1>
+          <p>The real-time WebSocket and Attendance Engine is online and operational.</p>
+          <p>Access the Web Portal here:<br><a href="https://sy-web-attendance-system.vercel.app" target="_blank">sy-web-attendance-system.vercel.app &rarr;</a></p>
+        </div>
+      </body>
+    </html>
+  `);
+});
+
 // Health Check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'healthy', timestamp: new Date().toISOString() });
