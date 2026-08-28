@@ -14,22 +14,12 @@ const DEPARTMENTS = [
 
 const DIVISIONS = ['SY-A', 'SY-B', 'SY-C'];
 
-const DEFAULT_SUBJECTS = {
-  comp: ['Operating Systems (CS201)', 'Database Management Systems (CS202)', 'Computer Networks (CS203)', 'OS Practical Lab', 'DBMS Lab'],
-  it: ['Data Structures & Algorithms (IT201)', 'Object Oriented Programming (IT202)', 'Web Technologies (IT203)', 'DSA Lab'],
-  aids: ['Machine Learning Foundations (AI201)', 'Python for Data Science (AI202)', 'Applied Statistics (AI203)', 'AI Lab'],
-  entc: ['Digital Signal Processing (ET201)', 'Microcontrollers & Embedded Systems (ET202)', 'Analog Circuits (ET203)', 'DSP Lab'],
-  elec: ['Power Systems & Machines (EE201)', 'Control Systems Engineering (EE202)', 'Power Electronics (EE203)', 'Machines Lab'],
-  instru: ['Sensors & Transducers (IN201)', 'Industrial Instrumentation (IN202)', 'Process Control (IN203)', 'Instrumentation Lab']
-};
-
 export function TeacherPortal({ teacher }) {
   const [activeSession, setActiveSession] = useState(null);
   const [teacherName, setTeacherName] = useState(teacher.name || 'Faculty Member');
-  const [department, setDepartment] = useState(teacher.department || 'comp');
+  const [department, setDepartment] = useState(teacher.department || 'entc');
   const [selectedDivisions, setSelectedDivisions] = useState(teacher.divisions || ['SY-A']);
-  const [selectedSubject, setSelectedSubject] = useState(teacher.subjectName || DEFAULT_SUBJECTS['comp'][0]);
-  const [customSubject, setCustomSubject] = useState('');
+  const [subjectName, setSubjectName] = useState(teacher.subjectName || '');
   const [batch, setBatch] = useState(teacher.batch || 'All');
   const [durationMinutes, setDurationMinutes] = useState(3);
   const [loading, setLoading] = useState(false);
@@ -40,6 +30,8 @@ export function TeacherPortal({ teacher }) {
       const sessRes = await api.getTeacherActiveSession(teacher.id);
       if (sessRes.success && sessRes.active) {
         setActiveSession(sessRes.session);
+      } else {
+        setActiveSession(null);
       }
     } catch (err) {
       console.error('Error loading teacher portal session:', err);
@@ -50,9 +42,78 @@ export function TeacherPortal({ teacher }) {
     loadActiveSession();
   }, [teacher.id]);
 
+  // 1. High-Precision 1-Second Timer Engine (Handles Countdown + 10s PIN Ring smoothly)
+  useEffect(() => {
+    if (!activeSession?.id || !activeSession?.endTime) return;
+
+    const interval = setInterval(() => {
+      const now = Date.now();
+      const endTimeMs = new Date(activeSession.endTime).getTime();
+      const remainingSec = Math.max(0, Math.ceil((endTimeMs - now) / 1000));
+
+      // Calculate 10s rotating countdown locally (10, 9, 8, ... 1)
+      const msIntoSlot = now % 10000;
+      const secondsRemainingInSlot = Math.max(1, 10 - Math.floor(msIntoSlot / 1000));
+
+      if (remainingSec <= 0) {
+        setActiveSession(prev => prev ? { ...prev, remainingSessionSec: 0, status: 'closed' } : null);
+        return;
+      }
+
+      setActiveSession(prev => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          remainingSessionSec: remainingSec,
+          pinInfo: {
+            ...(prev.pinInfo || {}),
+            secondsRemaining: secondsRemainingInSlot
+          }
+        };
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [activeSession?.id, activeSession?.endTime]);
+
+  // 2. High-Frequency Fast Polling (Every 2s) for instant PIN rotation & attendee list updates
+  useEffect(() => {
+    if (!activeSession?.id) return;
+
+    const poll = async () => {
+      try {
+        const sessRes = await api.getTeacherActiveSession(teacher.id);
+        if (sessRes.success && sessRes.active) {
+          setActiveSession(prev => {
+            if (!prev) return sessRes.session;
+            return {
+              ...prev,
+              ...sessRes.session,
+              pinInfo: {
+                ...sessRes.session.pinInfo,
+                // Keep local precision seconds remaining
+                secondsRemaining: prev.pinInfo?.secondsRemaining || sessRes.session.pinInfo.secondsRemaining
+              },
+              totalPresent: sessRes.session.totalPresent,
+              totalStudents: sessRes.session.totalStudents,
+              attendees: sessRes.session.attendees
+            };
+          });
+        } else if (sessRes.success && !sessRes.active) {
+          setActiveSession(null);
+        }
+      } catch (err) {
+        console.error('Session poll error:', err);
+      }
+    };
+
+    const pollInterval = setInterval(poll, 2000);
+    return () => clearInterval(pollInterval);
+  }, [activeSession?.id, teacher.id]);
+
+  // 3. WebSocket Listener (Works on servers with persistent sockets)
   useEffect(() => {
     const socket = getSocket();
-
     if (activeSession?.id) {
       socket.emit('join_session', activeSession.id);
     }
@@ -96,15 +157,14 @@ export function TeacherPortal({ teacher }) {
 
   const handleStartSession = async (e) => {
     e.preventDefault();
-    const finalSubject = customSubject.trim() ? customSubject.trim() : selectedSubject;
-    if (!finalSubject) return alert('Please enter a subject');
+    if (!subjectName.trim()) return alert('Please enter the Subject Name');
     setLoading(true);
 
     try {
       const res = await api.startSession({
         teacherId: teacher.id,
         teacherName: teacherName.trim(),
-        subjectName: finalSubject,
+        subjectName: subjectName.trim(),
         department,
         divisions: selectedDivisions,
         batch,
@@ -128,6 +188,7 @@ export function TeacherPortal({ teacher }) {
       if (res.success) {
         setActiveSession(prev => ({
           ...prev,
+          endTime: res.session.endTime,
           remainingSessionSec: res.remainingSessionSec,
           durationMinutes: res.session.durationMinutes
         }));
@@ -139,7 +200,7 @@ export function TeacherPortal({ teacher }) {
 
   const handleEndSession = async () => {
     if (!activeSession) return;
-    if (!window.confirm('Are you sure you want to end this attendance session?')) return;
+    if (!window.confirm('Are you sure you want to conclude this attendance session?')) return;
 
     try {
       const res = await api.endSession(activeSession.id);
@@ -185,7 +246,7 @@ export function TeacherPortal({ teacher }) {
           <h2 className="text-xl sm:text-2xl font-extrabold text-slate-900">{teacherName}</h2>
           <p className="text-xs text-slate-500 mt-0.5 font-medium flex items-center space-x-1.5">
             <Building2 className="w-3.5 h-3.5 text-indigo-500" />
-            <span>{deptObj?.name || 'Computer Science'} • SY Lecture Portal</span>
+            <span>{deptObj?.name || department.toUpperCase()} • SY Lecture Portal</span>
           </p>
         </div>
 
@@ -209,7 +270,7 @@ export function TeacherPortal({ teacher }) {
           
           <div className="flex flex-col lg:flex-row items-center justify-between gap-8">
             
-            {/* Left: Huge Glowing PIN Display */}
+            {/* Left: Glowing PIN Display */}
             <div className="flex-1 text-center lg:text-left">
               <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 text-xs font-bold uppercase tracking-wider mb-3 border border-emerald-500/30">
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
@@ -234,7 +295,7 @@ export function TeacherPortal({ teacher }) {
                   {String(activeSession?.pinInfo?.pin || '8492').split('').map((digit, idx) => (
                     <div
                       key={idx}
-                      className="w-16 h-20 sm:w-20 sm:h-24 rounded-2xl bg-gradient-to-b from-slate-800 to-slate-900 border-2 border-indigo-400/80 flex items-center justify-center text-4xl sm:text-6xl font-black text-white shadow-xl shadow-indigo-500/30"
+                      className="w-16 h-20 sm:w-20 sm:h-24 rounded-2xl bg-gradient-to-b from-slate-800 to-slate-900 border-2 border-indigo-400/80 flex items-center justify-center text-4xl sm:text-6xl font-black text-white shadow-xl shadow-indigo-500/30 transition-all transform hover:scale-105"
                     >
                       {digit}
                     </div>
@@ -250,7 +311,7 @@ export function TeacherPortal({ teacher }) {
                     stroke={4}
                   />
                   <span className="text-xs text-slate-400 font-semibold">
-                    New PIN in {activeSession?.pinInfo?.secondsRemaining || 10} seconds...
+                    New PIN in <span className="text-indigo-400 font-bold">{activeSession?.pinInfo?.secondsRemaining || 10}s</span>...
                   </span>
                 </div>
               </div>
@@ -259,7 +320,7 @@ export function TeacherPortal({ teacher }) {
               <div className="flex flex-wrap items-center justify-center lg:justify-start gap-3 mt-2">
                 <div className="flex items-center space-x-2 px-4 py-2 rounded-xl bg-slate-800 border border-slate-700 text-white font-extrabold text-sm">
                   <Clock className="w-4 h-4 text-amber-400 animate-pulse" />
-                  <span>Session Window: {formatTime(activeSession.remainingSessionSec || 0)}</span>
+                  <span>Session Window: <span className="font-mono text-amber-300">{formatTime(activeSession.remainingSessionSec || 0)}</span></span>
                 </div>
 
                 <button
@@ -301,7 +362,7 @@ export function TeacherPortal({ teacher }) {
                 </div>
               </div>
 
-              {/* Manual Mark Input for Dead Battery */}
+              {/* Manual Mark Input */}
               <form onSubmit={handleManualMark} className="mt-4">
                 <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">
                   Manual Override (Dead Battery)
@@ -373,11 +434,7 @@ export function TeacherPortal({ teacher }) {
               </label>
               <select
                 value={department}
-                onChange={(e) => {
-                  setDepartment(e.target.value);
-                  const subList = DEFAULT_SUBJECTS[e.target.value] || [];
-                  if (subList.length > 0) setSelectedSubject(subList[0]);
-                }}
+                onChange={(e) => setDepartment(e.target.value)}
                 className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 font-semibold focus:border-indigo-600 outline-none"
               >
                 {DEPARTMENTS.map(d => (
@@ -386,7 +443,7 @@ export function TeacherPortal({ teacher }) {
               </select>
             </div>
 
-            {/* MULTI-DIVISION CHECKBOXES (Tick 1, 2, or 3 divisions!) */}
+            {/* MULTI-DIVISION CHECKBOXES */}
             <div>
               <div className="flex items-center justify-between mb-1.5">
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
@@ -421,41 +478,21 @@ export function TeacherPortal({ teacher }) {
                   );
                 })}
               </div>
-              <p className="text-[11px] text-slate-500 mt-1">
-                💡 Ticking multiple divisions allows students from both classes (e.g. SY-A + SY-B) to mark attendance together!
-              </p>
             </div>
 
-            {/* Subject Dropdown & Custom Option */}
+            {/* Custom Subject Name Input */}
             <div>
               <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                Select Subject / Lecture
+                Subject / Lecture Name
               </label>
-              <select
-                value={selectedSubject}
-                onChange={(e) => {
-                  setSelectedSubject(e.target.value);
-                  if (e.target.value !== 'other') setCustomSubject('');
-                }}
-                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 font-semibold focus:border-indigo-600 outline-none mb-2"
-              >
-                {(DEFAULT_SUBJECTS[department] || []).map((sub, idx) => (
-                  <option key={idx} value={sub}>{sub}</option>
-                ))}
-                <option value="other">➕ Enter Custom Subject / Lab...</option>
-              </select>
-
-              {selectedSubject === 'other' && (
-                <input
-                  type="text"
-                  value={customSubject}
-                  onChange={(e) => setCustomSubject(e.target.value)}
-                  placeholder="Type subject name (e.g. Cloud Computing Lab)"
-                  className="w-full bg-slate-50 border border-indigo-400 rounded-xl px-3.5 py-2 text-sm text-slate-900 focus:bg-white outline-none"
-                  autoFocus
-                  required
-                />
-              )}
+              <input
+                type="text"
+                value={subjectName}
+                onChange={(e) => setSubjectName(e.target.value)}
+                placeholder="Enter Subject Name (e.g. Digital Signal Processing)"
+                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 font-bold focus:border-indigo-600 outline-none"
+                required
+              />
             </div>
 
             {/* Batch Selection */}
