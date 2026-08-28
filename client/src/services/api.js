@@ -15,7 +15,7 @@ export function getSocket() {
   return socket;
 }
 
-// Generic fetch wrapper
+// Generic fetch wrapper with robust error handling
 async function request(endpoint, options = {}) {
   const url = `${API_BASE}${endpoint}`;
   const headers = {
@@ -25,7 +25,15 @@ async function request(endpoint, options = {}) {
 
   try {
     const res = await fetch(url, { ...options, headers });
-    const json = await res.json();
+    const text = await res.text();
+    let json = {};
+    try {
+      json = JSON.parse(text);
+    } catch (parseErr) {
+      console.warn(`Non-JSON response from ${endpoint}:`, text.slice(0, 100));
+      throw new Error(`Server returned status ${res.status}. Please check backend connection.`);
+    }
+
     if (!res.ok) {
       throw new Error(json.error || json.message || `Request failed with status ${res.status}`);
     }
