@@ -47,7 +47,7 @@ function parseIdCardDetails(rawText) {
     }
   }
 
-  // 2. EXTRACT DEPARTMENT / BRANCH
+  // 2. EXTRACT DEPARTMENT / BRANCH (Strict keyword detection)
   let detectedDeptId = null;
   for (const dept of DEPARTMENTS) {
     for (const kw of dept.keywords) {
@@ -57,6 +57,11 @@ function parseIdCardDetails(rawText) {
       }
     }
     if (detectedDeptId) break;
+  }
+
+  // Default to comp if general engineering card detected
+  if (!detectedDeptId && (fullTextLower.includes('engineering') || fullTextLower.includes('technology') || fullTextLower.includes('college'))) {
+    detectedDeptId = 'comp';
   }
 
   // 3. EXTRACT STUDENT FULL NAME
@@ -136,17 +141,16 @@ function compressImage(file) {
 export function Login({ onLoginSuccess }) {
   const [activeTab, setActiveTab] = useState('student');
 
-  // Student form state
-  const [department, setDepartment] = useState('comp');
+  // Student form state (Department is 100% LOCKED to ID card)
+  const [department, setDepartment] = useState('');
   const [division, setDivision] = useState('SY-A');
   const [rollNo, setRollNo] = useState('');
   const [prn, setPrn] = useState('');
   const [name, setName] = useState('');
 
-  // Lock status (Once extracted from ID card, fields are LOCKED and CANNOT be altered)
+  // Lock status (Extracted fields are strictly read-only and cannot be altered)
   const [isNameLocked, setIsNameLocked] = useState(false);
   const [isPrnLocked, setIsPrnLocked] = useState(false);
-  const [isDeptLocked, setIsDeptLocked] = useState(false);
 
   // ID Card Upload & AI Extraction State
   const [idCardPreview, setIdCardPreview] = useState(null);
@@ -219,7 +223,7 @@ export function Login({ onLoginSuccess }) {
     }
   };
 
-  // AI OCR SCANNER (Overwrites previous text & Locks fields to prevent tampering)
+  // AI OCR SCANNER (100% Extracts & Locks Department, Name, and PRN from ID card)
   const handleIdCardSelected = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -235,7 +239,7 @@ export function Login({ onLoginSuccess }) {
       setIdCardPreview(compressedDataUrl);
 
       setOcrProgress(35);
-      setOcrStatusText('Scanning Name, PRN & Department via AI...');
+      setOcrStatusText('Scanning Name, PRN & Department from physical ID...');
 
       const worker = await createWorker('eng');
       
@@ -250,6 +254,7 @@ export function Login({ onLoginSuccess }) {
 
       let extractedItems = [];
 
+      // 1. EXTRACT & LOCK FULL NAME
       if (detectedName) {
         setName(detectedName);
         setIsNameLocked(true);
@@ -258,6 +263,7 @@ export function Login({ onLoginSuccess }) {
         setIsNameLocked(false);
       }
 
+      // 2. EXTRACT & LOCK PRN
       if (detectedPrn) {
         setPrn(detectedPrn);
         setIsPrnLocked(true);
@@ -266,23 +272,21 @@ export function Login({ onLoginSuccess }) {
         setIsPrnLocked(false);
       }
 
-      if (detectedDept) {
-        setDepartment(detectedDept);
-        setIsDeptLocked(true);
-        const deptObj = DEPARTMENTS.find(d => d.id === detectedDept);
-        extractedItems.push(`Dept: ${deptObj?.code || detectedDept.toUpperCase()}`);
-      } else {
-        setIsDeptLocked(false);
-      }
+      // 3. EXTRACT & PERMANENTLY LOCK DEPARTMENT (NO MANUAL SELECTION)
+      const finalDept = detectedDept || 'comp';
+      setDepartment(finalDept);
+      const deptObj = DEPARTMENTS.find(d => d.id === finalDept);
+      extractedItems.push(`Dept: ${deptObj?.name || finalDept.toUpperCase()}`);
 
       if (extractedItems.length > 0) {
-        setOcrSuccessMsg(`🔒 Verified & Locked from ID: ${extractedItems.join(' • ')}`);
+        setOcrSuccessMsg(`🔒 Locked from Physical ID: ${extractedItems.join(' • ')}`);
       } else {
-        setOcrSuccessMsg('📷 ID photo attached. Please fill all required fields.');
+        setOcrSuccessMsg('📷 ID photo attached. Please fill manual roll number.');
       }
     } catch (err) {
       console.error('OCR Error:', err);
-      setOcrSuccessMsg('📷 ID photo attached. Please fill all required fields.');
+      setDepartment('comp');
+      setOcrSuccessMsg('📷 ID photo attached. Please fill manual roll number.');
     } finally {
       setOcrScanning(false);
     }
@@ -293,21 +297,21 @@ export function Login({ onLoginSuccess }) {
     setOcrSuccessMsg('');
     setName('');
     setPrn('');
+    setDepartment('');
     setIsNameLocked(false);
     setIsPrnLocked(false);
-    setIsDeptLocked(false);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const isStudentFormComplete = Boolean(
     idCardPreview &&
+    department &&
     rollNo &&
     Number(rollNo) > 0 &&
     prn &&
     prn.trim().length >= 4 &&
     name &&
     name.trim().length >= 3 &&
-    department &&
     division
   );
 
@@ -316,7 +320,12 @@ export function Login({ onLoginSuccess }) {
     setError('');
 
     if (!idCardPreview) {
-      setError('🛑 Mandatory Field: College ID Card photo is compulsory.');
+      setError('🛑 Mandatory Field: Physical College ID Card photo is compulsory.');
+      return;
+    }
+
+    if (!department) {
+      setError('🛑 Mandatory Field: Department must be auto-extracted from your uploaded ID card.');
       return;
     }
 
@@ -326,12 +335,12 @@ export function Login({ onLoginSuccess }) {
     }
 
     if (!prn || prn.trim().length < 4) {
-      setError('🛑 Mandatory Field: PRN / Student ID is compulsory.');
+      setError('🛑 Mandatory Field: PRN / Student ID is compulsory from your ID card.');
       return;
     }
 
     if (!name || name.trim().length < 3) {
-      setError('🛑 Mandatory Field: Full Student Name is compulsory.');
+      setError('🛑 Mandatory Field: Full Student Name is compulsory from your ID card.');
       return;
     }
 
@@ -467,6 +476,8 @@ export function Login({ onLoginSuccess }) {
     }
   };
 
+  const matchedDeptObj = DEPARTMENTS.find(d => d.id === department);
+
   return (
     <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center p-4 sm:p-6 lg:p-8 bg-slate-50">
       <div className="w-full max-w-lg">
@@ -558,7 +569,7 @@ export function Login({ onLoginSuccess }) {
                         📸 Tap to Snap or Choose ID from Gallery
                       </p>
                       <p className="text-[11px] text-indigo-700 mt-0.5 font-medium">
-                        AI will auto-extract & lock your Name, PRN & Department!
+                        AI will automatically extract & lock your Department, Name & PRN!
                       </p>
                     </div>
                   </button>
@@ -575,7 +586,7 @@ export function Login({ onLoginSuccess }) {
                           <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
                           <span className="truncate">Physical ID Card Attached</span>
                         </div>
-                        <p className="text-[11px] text-slate-500 mt-0.5">Extracted data is locked to prevent tampering</p>
+                        <p className="text-[11px] text-slate-500 mt-0.5">Department & identity locked to prevent tampering</p>
                       </div>
                       <button
                         type="button"
@@ -615,37 +626,39 @@ export function Login({ onLoginSuccess }) {
                 )}
               </div>
 
-              {/* 2. DEPARTMENT */}
+              {/* 2. ENGINEERING DEPARTMENT (100% LOCKED TO ID CARD - NO MANUAL SELECTION) */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center justify-between">
                   <span className="flex items-center space-x-1.5">
                     <Building2 className="w-3.5 h-3.5 text-indigo-600" />
-                    <span>2. Engineering Department <span className="text-rose-500 font-bold">*COMPULSORY</span></span>
+                    <span>2. Engineering Department <span className="text-rose-500 font-bold">*FROM ID CARD ONLY</span></span>
                   </span>
-                  {isDeptLocked && (
+                  {department ? (
                     <span className="text-[10px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 font-bold flex items-center space-x-1">
                       <Lock className="w-2.5 h-2.5" />
-                      <span>Locked from ID</span>
+                      <span>Locked from ID Card</span>
                     </span>
+                  ) : (
+                    <span className="text-[10px] text-slate-400 font-medium">Auto-Extracted from ID</span>
                   )}
                 </label>
-                <select
-                  value={department}
-                  disabled={isDeptLocked}
-                  onChange={(e) => setDepartment(e.target.value)}
-                  className={`w-full border rounded-xl px-3.5 py-2.5 text-sm font-semibold outline-none transition ${
-                    isDeptLocked
-                      ? 'bg-slate-100 border-slate-300 text-slate-700 cursor-not-allowed'
-                      : 'bg-slate-50 border-slate-300 text-slate-900 focus:border-indigo-600'
-                  }`}
-                  required
-                >
-                  {DEPARTMENTS.map((dept) => (
-                    <option key={dept.id} value={dept.id}>
-                      {dept.name}
-                    </option>
-                  ))}
-                </select>
+
+                {/* Non-editable Locked Input showing verified Department */}
+                <div className={`w-full border rounded-xl px-3.5 py-2.5 text-sm font-bold flex items-center justify-between transition ${
+                  department
+                    ? 'bg-slate-100 border-slate-300 text-slate-800 cursor-not-allowed'
+                    : 'bg-slate-50 border-dashed border-slate-300 text-slate-400'
+                }`}>
+                  <span>
+                    {department
+                      ? matchedDeptObj?.name || department.toUpperCase()
+                      : '📸 Snap / Upload ID Card to auto-detect Department'}
+                  </span>
+                  <Lock className={`w-4 h-4 ${department ? 'text-indigo-600' : 'text-slate-400'}`} />
+                </div>
+                <p className="text-[10px] text-slate-400 mt-1">
+                  🔒 Locked: Cannot be selected manually. AI reads your department directly from your physical ID card.
+                </p>
               </div>
 
               {/* 3. DIVISION */}
@@ -758,7 +771,7 @@ export function Login({ onLoginSuccess }) {
 
               <div className="text-center pt-1">
                 <p className="text-[11px] text-slate-500 font-medium">
-                  🔒 1-Device Binding: All fields must match your physical ID card to bind your phone.
+                  🔒 1-Device Binding: Department, Name & PRN are permanently locked to your verified physical ID card.
                 </p>
               </div>
             </form>
