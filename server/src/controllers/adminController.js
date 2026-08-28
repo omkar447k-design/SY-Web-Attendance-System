@@ -1,4 +1,4 @@
-import { db } from '../config/db.js';
+import { db, DEPARTMENTS } from '../config/db.js';
 import { DeviceService } from '../services/deviceService.js';
 import { ExcelService } from '../services/excelService.js';
 
@@ -12,11 +12,15 @@ export class AdminController {
 
     if (code === validCode || code === 'admin' || code === 'HOD@ADMIN2026') {
       const hodAccounts = db.getHodAccounts();
-      const deptStatus = Object.keys(hodAccounts).map(deptKey => ({
-        id: deptKey,
-        name: hodAccounts[deptKey].name,
-        isFirstTime: Boolean(hodAccounts[deptKey].isFirstTime || !hodAccounts[deptKey].password)
-      }));
+      const deptStatus = DEPARTMENTS.map(dept => {
+        const acc = hodAccounts[dept.id] || {};
+        return {
+          id: dept.id,
+          name: dept.name,
+          hodName: acc.name || null,
+          isFirstTime: Boolean(!acc.name || !acc.password || acc.isFirstTime)
+        };
+      });
 
       return res.json({
         success: true,
@@ -46,23 +50,54 @@ export class AdminController {
       }
     }
 
-    const { department = 'comp', password, newPassword, isFirstTimeSetup } = req.body;
+    const { department = 'entc', hodName, password, newPassword, isFirstTimeSetup } = req.body;
     const hodAccounts = db.getHodAccounts();
-    const hod = hodAccounts[department] || { department, name: `HOD ${department.toUpperCase()}`, password: null, isFirstTime: true };
+    const deptObj = DEPARTMENTS.find(d => d.id === department);
+    const hod = hodAccounts[department] || { department, name: null, password: null, isFirstTime: true };
 
     if (isFirstTimeSetup || hod.isFirstTime || !hod.password) {
-      if (!newPassword || newPassword.length < 6) {
+      if (!hodName || hodName.trim().length < 3) {
         return res.status(400).json({
           success: false,
-          error: 'Please enter a secure HOD password with at least 6 characters.'
+          error: 'Please enter your Full Name as HOD.'
         });
       }
 
+      if (!newPassword || newPassword.length < 6) {
+        return res.status(400).json({
+          success: false,
+          error: 'Please create a secure HOD password with at least 6 characters.'
+        });
+      }
+
+      const finalHodName = hodName.trim();
       db.setHodAccount(department, {
+        name: finalHodName,
         password: newPassword,
         isFirstTime: false,
         configuredAt: new Date().toISOString()
       });
+
+      let teachers = db.get('teachers');
+      let teacherRec = teachers.find(t => t.name.toLowerCase() === finalHodName.toLowerCase() && t.department === department);
+      if (!teacherRec) {
+        teacherRec = {
+          id: `T_HOD_${department}_${Date.now()}`,
+          name: finalHodName,
+          department,
+          email: `${finalHodName.toLowerCase().replace(/[^a-z0-9]/g, '')}@college.edu`,
+          role: 'HOD & Professor',
+          password: newPassword,
+          isFirstTime: false
+        };
+        teachers.push(teacherRec);
+        db.set('teachers', teachers);
+      } else {
+        teacherRec.role = 'HOD & Professor';
+        teacherRec.password = newPassword;
+        teacherRec.isFirstTime = false;
+        db.set('teachers', teachers);
+      }
 
       loginAttempts.delete(ip);
 
@@ -71,8 +106,8 @@ export class AdminController {
         token: `hod_session_${department}_${Date.now()}`,
         role: 'admin',
         department,
-        hodName: hod.name,
-        message: `🎉 Master Password successfully set for ${hod.name}!`
+        hodName: finalHodName,
+        message: `🎉 Account successfully created for ${finalHodName} (HOD - ${deptObj?.name || department.toUpperCase()})!`
       });
     }
 
@@ -84,7 +119,7 @@ export class AdminController {
         token: `hod_session_${department}_${Date.now()}`,
         role: 'admin',
         department,
-        hodName: hod.name,
+        hodName: hod.name || `HOD ${deptObj?.code || department.toUpperCase()}`,
         message: `Welcome ${hod.name}!`
       });
     }
@@ -97,7 +132,7 @@ export class AdminController {
       loginAttempts.set(ip, record);
       return res.status(429).json({
         success: false,
-        error: 'Too many failed attempts. Your IP has been temporarily locked for 15 minutes.'
+        error: 'Too many failed attempts. Security lockout active for 15 minutes.'
       });
     }
 
@@ -105,12 +140,12 @@ export class AdminController {
     const attemptsLeft = 5 - record.attempts;
     return res.status(401).json({
       success: false,
-      error: `Incorrect HOD Password for ${hod.name}. (${attemptsLeft} attempt(s) remaining)`
+      error: `Incorrect HOD Password for ${hod.name || deptObj?.name}. (${attemptsLeft} attempt(s) remaining)`
     });
   }
 
   static changePassword(req, res) {
-    const { department = 'comp', currentPassword, newPassword } = req.body;
+    const { department = 'entc', currentPassword, newPassword } = req.body;
     if (!newPassword || newPassword.length < 6) {
       return res.status(400).json({ success: false, error: 'New password must be at least 6 characters long.' });
     }
@@ -137,14 +172,15 @@ export class AdminController {
     let students = db.get('students');
     let sessions = db.get('sessions');
     let attendance = db.get('attendance');
-    const teachers = db.get('teachers');
+    let teachers = db.get('teachers');
     const subjects = db.get('subjects');
     const settings = db.getSettings();
 
     if (department && department !== 'all') {
-      students = students.filter(s => !s.department || s.department === department);
-      sessions = sessions.filter(s => !s.department || s.department === department);
-      attendance = attendance.filter(a => !a.department || a.department === department);
+      students = students.filter(s => s.department === department);
+      sessions = sessions.filter(s => s.department === department);
+      attendance = attendance.filter(a => a.department === department);
+      teachers = teachers.filter(t => t.department === department);
     }
 
     let defaulterCount = 0;
@@ -187,7 +223,7 @@ export class AdminController {
     const sessions = db.get('sessions');
     const attendance = db.get('attendance');
 
-    if (department && department !== 'all') students = students.filter(s => !s.department || s.department === department);
+    if (department && department !== 'all') students = students.filter(s => s.department === department);
     if (division) students = students.filter(s => s.division === division);
     if (batch) students = students.filter(s => s.batch === batch);
     if (search) {
@@ -220,7 +256,7 @@ export class AdminController {
   }
 
   static addStudent(req, res) {
-    const { rollNo, prn, name, department = 'comp', division = 'SY-A', batch = 'B1' } = req.body;
+    const { rollNo, prn, name, department = 'entc', division = 'SY-A', batch = 'B1' } = req.body;
     if (!rollNo || !name) {
       return res.status(400).json({ success: false, error: 'Roll No and Name are required' });
     }
@@ -304,11 +340,16 @@ export class AdminController {
   }
 
   static getTeachers(req, res) {
-    const teachers = db.get('teachers').map(t => {
+    const { department } = req.query;
+    let teachers = db.get('teachers');
+    if (department && department !== 'all') {
+      teachers = teachers.filter(t => t.department === department);
+    }
+    const safeTeachers = teachers.map(t => {
       const { password, ...safeTeacher } = t;
       return safeTeacher;
     });
-    res.json({ success: true, data: teachers });
+    res.json({ success: true, data: safeTeachers });
   }
 
   static resetTeacherPassword(req, res) {

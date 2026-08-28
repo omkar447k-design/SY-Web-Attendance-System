@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Shield, Users, Settings, AlertTriangle, Download, RefreshCw, UserPlus, Unlock, Search, BookOpen, Key, Building2, ImageIcon, Bell, CheckCircle2, Smartphone, ShieldCheck, KeyRound, Clock, UserCheck, Trash2 } from 'lucide-react';
+import { Shield, Users, Settings, AlertTriangle, Download, RefreshCw, UserPlus, Unlock, Search, BookOpen, Key, Building2, ImageIcon, Bell, CheckCircle2, Smartphone, ShieldCheck, KeyRound, Clock, UserCheck, Trash2, Play, PlusCircle } from 'lucide-react';
 import { api } from '../services/api';
 
 const DEPARTMENTS = [
@@ -11,16 +11,20 @@ const DEPARTMENTS = [
   { id: 'instru', name: 'Instrumentation Engineering', code: 'INSTRU' }
 ];
 
-export function AdminPortal() {
+const DIVISIONS = ['SY-A', 'SY-B', 'SY-C'];
+
+export function AdminPortal({ hodProfile, onLaunchLectureAsHod }) {
   const [activeTab, setActiveTab] = useState('overview');
   const [stats, setStats] = useState(null);
   const [students, setStudents] = useState([]);
   const [teachers, setTeachers] = useState([]);
-  const [subjects, setSubjects] = useState([]);
   const [settings, setSettings] = useState({});
   const [loginLogs, setLoginLogs] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [departmentFilter, setDepartmentFilter] = useState('all');
+  
+  // Department is locked to this HOD's department
+  const currentDept = hodProfile?.department || 'entc';
+  const currentHodName = hodProfile?.name || 'Department Head';
   const [divisionFilter, setDivisionFilter] = useState('SY-A');
   const [loading, setLoading] = useState(true);
 
@@ -28,12 +32,17 @@ export function AdminPortal() {
   const [selectedPhoto, setSelectedPhoto] = useState(null);
   const [selectedStudentName, setSelectedStudentName] = useState('');
 
+  // HOD Quick Lecture Launcher state
+  const [showHodLectureModal, setShowHodLectureModal] = useState(false);
+  const [hodSubject, setHodSubject] = useState('');
+  const [hodDivisions, setHodDivisions] = useState(['SY-A']);
+  const [hodBatch, setHodBatch] = useState('All');
+
   // Add Student state
   const [showAddModal, setShowAddModal] = useState(false);
   const [newRollNo, setNewRollNo] = useState('');
   const [newPrn, setNewPrn] = useState('');
   const [newName, setNewName] = useState('');
-  const [newDept, setNewDept] = useState('comp');
   const [newDivision, setNewDivision] = useState('SY-A');
   const [newBatch, setNewBatch] = useState('B1');
 
@@ -43,30 +52,24 @@ export function AdminPortal() {
   const [passMsg, setPassMsg] = useState('');
   const [passError, setPassError] = useState('');
 
-  // Faculty Passcode update state
-  const [newFacultyPass, setNewFacultyPass] = useState('');
-  const [facultyPassMsg, setFacultyPassMsg] = useState('');
-
   const loadData = async () => {
     setLoading(true);
     try {
-      const [statsRes, studRes, teachRes, subRes, setRes, logsRes] = await Promise.all([
-        api.getAdminStats(departmentFilter !== 'all' ? departmentFilter : undefined),
-        api.getStudents({ division: divisionFilter, department: departmentFilter !== 'all' ? departmentFilter : undefined }),
+      const [statsRes, studRes, teachRes, setRes, logsRes] = await Promise.all([
+        api.getAdminStats(currentDept),
+        api.getStudents({ division: divisionFilter, department: currentDept }),
         api.getTeachers(),
-        api.getSubjects(),
         api.getSettings(),
-        api.getLoginLogs(departmentFilter !== 'all' ? departmentFilter : undefined)
+        api.getLoginLogs(currentDept)
       ]);
 
       if (statsRes.success) setStats(statsRes.data);
       if (studRes.success) setStudents(studRes.data);
-      if (teachRes.success) setTeachers(teachRes.data);
-      if (subRes.success) setSubjects(subRes.data);
-      if (setRes.success) {
-        setSettings(setRes.data);
-        setNewFacultyPass(setRes.data.facultyPassword || 'faculty@2026');
+      if (teachRes.success) {
+        // Only teachers belonging to this HOD's department
+        setTeachers(teachRes.data.filter(t => t.department === currentDept));
       }
+      if (setRes.success) setSettings(setRes.data);
       if (logsRes.success) setLoginLogs(logsRes.data || []);
     } catch (err) {
       console.error('Error loading admin data:', err);
@@ -79,11 +82,11 @@ export function AdminPortal() {
     loadData();
     const interval = setInterval(loadData, 5000);
     return () => clearInterval(interval);
-  }, [divisionFilter, departmentFilter]);
+  }, [divisionFilter, currentDept]);
 
   // HOD EXPEL / DELETE SUSPICIOUS STUDENT
   const handleDeleteStudent = async (studentId, studentName, rollNo) => {
-    if (!window.confirm(`⚠️ EXPEL STUDENT CONFIRMATION: Are you sure you want to permanently delete Roll No. ${rollNo} (${studentName}) from the database? All attendance records will be removed.`)) {
+    if (!window.confirm(`⚠️ EXPEL STUDENT: Are you sure you want to permanently remove Roll No. ${rollNo} (${studentName}) from the database?`)) {
       return;
     }
 
@@ -112,7 +115,7 @@ export function AdminPortal() {
   };
 
   const handleResetTeacherPassword = async (teacherId, teacherName) => {
-    if (!window.confirm(`Reset private password for professor ${teacherName}? They will be able to create a new password on their next login.`)) return;
+    if (!window.confirm(`Reset password for professor ${teacherName}? They will be prompted to create a new password on their next login.`)) return;
     try {
       const res = await api.resetTeacherPassword(teacherId);
       if (res.success) {
@@ -131,7 +134,7 @@ export function AdminPortal() {
         rollNo: Number(newRollNo),
         prn: newPrn,
         name: newName,
-        department: newDept,
+        department: currentDept,
         division: newDivision,
         batch: newBatch
       });
@@ -148,27 +151,13 @@ export function AdminPortal() {
     }
   };
 
-  const handleUpdateFacultyPasscode = async (e) => {
-    e.preventDefault();
-    try {
-      const res = await api.updateSettings({ ...settings, facultyPassword: newFacultyPass });
-      if (res.success) {
-        setFacultyPassMsg('✅ Faculty launcher security passcode updated!');
-        setTimeout(() => setFacultyPassMsg(''), 4000);
-      }
-    } catch (err) {
-      alert(err.message || 'Failed to update faculty passcode');
-    }
-  };
-
   const handleChangePassword = async (e) => {
     e.preventDefault();
     setPassMsg('');
     setPassError('');
     try {
-      const dept = departmentFilter !== 'all' ? departmentFilter : 'comp';
       const res = await api.changeHodPassword({
-        department: dept,
+        department: currentDept,
         currentPassword: currentPass,
         newPassword: newPass
       });
@@ -182,17 +171,47 @@ export function AdminPortal() {
     }
   };
 
+  const toggleHodDivision = (div) => {
+    if (hodDivisions.includes(div)) {
+      if (hodDivisions.length > 1) setHodDivisions(hodDivisions.filter(d => d !== div));
+    } else {
+      setHodDivisions([...hodDivisions, div]);
+    }
+  };
+
+  const handleLaunchHodLectureSubmit = (e) => {
+    e.preventDefault();
+    if (!hodSubject.trim()) return alert('Please enter the Subject Name');
+    if (hodDivisions.length === 0) return alert('Please select at least one division');
+
+    const teacherProfile = {
+      id: `T_HOD_${currentDept}`,
+      name: currentHodName,
+      department: currentDept,
+      divisions: hodDivisions,
+      division: hodDivisions.join(', '),
+      subjectName: hodSubject.trim(),
+      batch: hodBatch,
+      role: 'teacher'
+    };
+
+    if (onLaunchLectureAsHod) {
+      onLaunchLectureAsHod(teacherProfile);
+    } else {
+      window.location.reload();
+    }
+  };
+
   const filteredStudents = students.filter(s => {
     const q = searchQuery.toLowerCase();
-    const matchesSearch = s.name.toLowerCase().includes(q) || String(s.rollNo).includes(q) || s.prn?.includes(q);
-    const matchesDept = departmentFilter === 'all' || !s.department || s.department === departmentFilter;
-    return matchesSearch && matchesDept;
+    return s.name.toLowerCase().includes(q) || String(s.rollNo).includes(q) || s.prn?.includes(q);
   });
 
-  const defaulters = students.filter(s => s.isDefaulter && (departmentFilter === 'all' || !s.department || s.department === departmentFilter));
+  const defaulters = students.filter(s => s.isDefaulter);
 
   const studentLogs = loginLogs.filter(l => l.type === 'NEW_STUDENT_REGISTRATION' || l.type === 'STUDENT_LOGIN');
   const facultyLogs = loginLogs.filter(l => l.type === 'FACULTY_LECTURE_START' || l.type === 'FACULTY_LECTURE_END');
+  const currentDeptObj = DEPARTMENTS.find(d => d.id === currentDept);
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-6">
@@ -202,25 +221,27 @@ export function AdminPortal() {
         <div>
           <div className="flex items-center space-x-2">
             <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
-            <span className="text-xs font-bold uppercase tracking-wider text-indigo-600">Department Head & Admin Portal</span>
+            <span className="text-xs font-bold uppercase tracking-wider text-indigo-600">
+              Department Portal • {currentDeptObj?.code || currentDept.toUpperCase()}
+            </span>
           </div>
           <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900">
-            {departmentFilter === 'all' ? 'All Engineering Departments' : DEPARTMENTS.find(d => d.id === departmentFilter)?.name}
+            {currentDeptObj?.name || 'Engineering Department'}
           </h1>
-          <p className="text-xs text-slate-500 mt-0.5 font-medium">Academic Year 2025-2026 • Verified Roster & Audit Center</p>
+          <p className="text-xs text-slate-500 mt-0.5 font-medium">
+            HOD: <span className="font-bold text-slate-800">{currentHodName}</span> • Academic Year 2025-2026
+          </p>
         </div>
 
         <div className="flex items-center space-x-2">
-          <select
-            value={departmentFilter}
-            onChange={(e) => setDepartmentFilter(e.target.value)}
-            className="bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2 text-xs font-bold text-slate-800 outline-none"
+          {/* HOD CAN CONDUCT LECTURES */}
+          <button
+            onClick={() => setShowHodLectureModal(true)}
+            className="flex items-center space-x-1.5 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md shadow-indigo-100 transition active:scale-95"
           >
-            <option value="all">🏢 All 6 Departments</option>
-            {DEPARTMENTS.map(d => (
-              <option key={d.id} value={d.id}>{d.name}</option>
-            ))}
-          </select>
+            <Play className="w-4 h-4" />
+            <span>Conduct Lecture as HOD</span>
+          </button>
 
           <a
             href={api.getMasterExcelUrl(divisionFilter)}
@@ -246,10 +267,10 @@ export function AdminPortal() {
         {[
           { id: 'overview', label: '📊 Overview & Stats', icon: Shield },
           { id: 'audit', label: `🔔 Live Student Logins (${studentLogs.length})`, icon: Bell },
-          { id: 'faculty', label: `👨‍🏫 Faculty Lecture Logs (${facultyLogs.length})`, icon: UserCheck },
+          { id: 'faculty', label: `👨‍🏫 Faculty Roster & Lectures (${teachers.length})`, icon: UserCheck },
           { id: 'roster', label: `👥 Verified Student Roster (${filteredStudents.length})`, icon: Users },
           { id: 'defaulters', label: `⚠️ Defaulters (<75%) (${defaulters.length})`, icon: AlertTriangle },
-          { id: 'settings', label: '⚙️ Security & Passcodes', icon: Settings }
+          { id: 'settings', label: '⚙️ Security & Password', icon: Settings }
         ].map(tab => (
           <button
             key={tab.id}
@@ -270,60 +291,27 @@ export function AdminPortal() {
         <div className="space-y-6">
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
-              <span className="text-xs font-bold text-slate-500 uppercase">Verified Students</span>
+              <span className="text-xs font-bold text-slate-500 uppercase">{currentDeptObj?.code} Students</span>
               <div className="text-3xl font-black text-slate-900 mt-1">{stats?.totalStudents || 0}</div>
               <p className="text-[11px] text-slate-400 mt-1 font-medium">1-Phone hardware bound</p>
             </div>
 
             <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
-              <span className="text-xs font-bold text-slate-500 uppercase">Total Faculty</span>
-              <div className="text-3xl font-black text-slate-900 mt-1">{stats?.totalTeachers || 0}</div>
+              <span className="text-xs font-bold text-slate-500 uppercase">Department Faculty</span>
+              <div className="text-3xl font-black text-slate-900 mt-1">{teachers.length}</div>
               <p className="text-[11px] text-slate-400 mt-1 font-medium">Private Password protected</p>
             </div>
 
             <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
-              <span className="text-xs font-bold text-indigo-600 uppercase">Lectures Conducted</span>
-              <div className="text-3xl font-black text-indigo-600 mt-1">{stats?.totalSessions || 0}</div>
-              <p className="text-[11px] text-slate-400 mt-1 font-medium">Multi-division sessions</p>
+              <span className="text-xs font-bold text-indigo-600 uppercase">Department Lectures</span>
+              <div className="text-3xl font-black text-indigo-600 mt-1">{facultyLogs.length}</div>
+              <p className="text-[11px] text-slate-400 mt-1 font-medium">Sessions conducted</p>
             </div>
 
             <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
               <span className="text-xs font-bold text-amber-600 uppercase">Defaulter Students</span>
               <div className="text-3xl font-black text-amber-600 mt-1">{defaulters.length}</div>
               <p className="text-[11px] text-slate-400 mt-1 font-medium">Below 75% threshold</p>
-            </div>
-          </div>
-
-          {/* Faculty Management Matrix */}
-          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm">
-            <h3 className="text-base font-extrabold text-slate-900 mb-4 flex items-center space-x-2">
-              <UserCheck className="w-4 h-4 text-indigo-600" />
-              <span>Department Faculty & Credentials Management</span>
-            </h3>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-              {teachers.map(t => {
-                const dept = DEPARTMENTS.find(d => d.id === t.department);
-                return (
-                  <div key={t.id} className="p-4 rounded-2xl bg-slate-50 border border-slate-200 flex flex-col justify-between">
-                    <div>
-                      <span className="text-[10px] uppercase font-bold text-indigo-600">{dept?.name || t.department}</span>
-                      <h4 className="font-bold text-slate-900 text-sm mt-0.5">{t.name}</h4>
-                      <p className="text-xs text-slate-500 mt-1">{t.email}</p>
-                    </div>
-
-                    <div className="mt-3 pt-2 border-t border-slate-200 flex items-center justify-between">
-                      <span className="text-[11px] font-bold text-emerald-600">● Password Active</span>
-                      <button
-                        onClick={() => handleResetTeacherPassword(t.id, t.name)}
-                        className="text-[11px] font-bold px-2 py-1 rounded-lg bg-slate-200 hover:bg-rose-100 hover:text-rose-700 text-slate-700 transition"
-                      >
-                        Reset Password
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
             </div>
           </div>
         </div>
@@ -336,9 +324,9 @@ export function AdminPortal() {
             <div>
               <h3 className="text-base font-extrabold text-slate-900 flex items-center space-x-2">
                 <Bell className="w-5 h-5 text-indigo-600" />
-                <span>Live Student Registration & Login Audit Feed</span>
+                <span>Live Student Registration & ID Audit Feed</span>
               </h3>
-              <p className="text-xs text-slate-500 mt-0.5">Real-time logs with verified physical ID card thumbnails and device IDs</p>
+              <p className="text-xs text-slate-500 mt-0.5">Real-time log of students verified through physical ID cards in {currentDeptObj?.name}</p>
             </div>
             <span className="px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-bold border border-emerald-200 flex items-center space-x-1">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
@@ -349,7 +337,7 @@ export function AdminPortal() {
           <div className="space-y-2.5 max-h-[550px] overflow-y-auto pr-1">
             {studentLogs.length === 0 ? (
               <div className="p-8 text-center text-slate-400 text-xs font-medium">
-                No student logins recorded yet.
+                No student logins recorded yet for this department.
               </div>
             ) : (
               studentLogs.map(log => (
@@ -415,64 +403,94 @@ export function AdminPortal() {
         </div>
       )}
 
-      {/* TAB 3: FACULTY LECTURE HISTORY */}
+      {/* TAB 3: FACULTY ROSTER & LECTURE LOGS */}
       {activeTab === 'faculty' && (
-        <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
-          <div className="flex items-center justify-between pb-3 border-b border-slate-200">
-            <div>
-              <h3 className="text-base font-extrabold text-slate-900 flex items-center space-x-2">
-                <UserCheck className="w-5 h-5 text-indigo-600" />
-                <span>Faculty Login & Attendance Session History</span>
-              </h3>
-              <p className="text-xs text-slate-500 mt-0.5">Audit log of lectures conducted by professors across divisions</p>
+        <div className="space-y-6">
+          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm">
+            <div className="flex items-center justify-between pb-3 mb-4 border-b border-slate-100">
+              <div>
+                <h3 className="text-base font-extrabold text-slate-900 flex items-center space-x-2">
+                  <UserCheck className="w-5 h-5 text-indigo-600" />
+                  <span>{currentDeptObj?.name} Faculty Roster</span>
+                </h3>
+                <p className="text-xs text-slate-500">Teachers registered and conducting lectures under this department</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {teachers.length === 0 ? (
+                <div className="col-span-3 p-6 text-center text-slate-400 text-xs font-medium">
+                  No professors have logged in through this department yet.
+                </div>
+              ) : (
+                teachers.map(t => (
+                  <div key={t.id} className="p-4 rounded-2xl bg-slate-50 border border-slate-200 flex flex-col justify-between">
+                    <div>
+                      <span className="text-[10px] uppercase font-bold text-indigo-600">{t.role || 'Teacher'}</span>
+                      <h4 className="font-bold text-slate-900 text-sm mt-0.5">{t.name}</h4>
+                      {t.subjectName && (
+                        <p className="text-xs text-slate-700 font-semibold mt-1">📚 Subject: {t.subjectName}</p>
+                      )}
+                      <p className="text-xs text-slate-500">{t.email}</p>
+                    </div>
+
+                    <div className="mt-3 pt-2 border-t border-slate-200 flex items-center justify-between">
+                      <span className="text-[11px] font-bold text-emerald-600">● Password Active</span>
+                      <button
+                        onClick={() => handleResetTeacherPassword(t.id, t.name)}
+                        className="text-[11px] font-bold px-2 py-1 rounded-lg bg-slate-200 hover:bg-rose-100 hover:text-rose-700 text-slate-700 transition"
+                      >
+                        Reset Password
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
 
-          <div className="space-y-2.5 max-h-[550px] overflow-y-auto pr-1">
-            {facultyLogs.length === 0 ? (
-              <div className="p-8 text-center text-slate-400 text-xs font-medium">
-                No faculty lectures recorded yet.
-              </div>
-            ) : (
-              facultyLogs.map(log => (
-                <div
-                  key={log.id}
-                  className="p-4 rounded-2xl bg-slate-50 border border-slate-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"
-                >
-                  <div>
-                    <div className="flex items-center space-x-2">
-                      <span className="font-extrabold text-slate-900 text-sm">👨‍🏫 {log.teacherName}</span>
-                      <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-100">
-                        {log.subjectName}
-                      </span>
+          {/* Lecture Logs */}
+          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
+            <h3 className="text-base font-extrabold text-slate-900">Lecture Session History</h3>
+            <div className="space-y-2.5 max-h-[400px] overflow-y-auto pr-1">
+              {facultyLogs.length === 0 ? (
+                <div className="p-6 text-center text-slate-400 text-xs">No lectures recorded yet.</div>
+              ) : (
+                facultyLogs.map(log => (
+                  <div key={log.id} className="p-4 rounded-2xl bg-slate-50 border border-slate-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                    <div>
+                      <div className="flex items-center space-x-2">
+                        <span className="font-extrabold text-slate-900 text-sm">👨‍🏫 {log.teacherName}</span>
+                        <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-100">
+                          {log.subjectName}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-600 mt-1">
+                        Divisions: <span className="font-bold text-slate-900">{log.division}</span>
+                        {log.batch !== 'All' ? ` • Batch: ${log.batch}` : ''}
+                        {log.totalPresent !== undefined ? ` • Verified Present: ${log.totalPresent} students` : ''}
+                      </p>
                     </div>
-                    <p className="text-xs text-slate-600 mt-1 font-medium">
-                      Divisions: <span className="font-bold text-slate-900">{log.division}</span>
-                      {log.batch !== 'All' ? ` • Batch: ${log.batch}` : ''}
-                      {log.totalPresent !== undefined ? ` • Verified Present: ${log.totalPresent} students` : ''}
-                    </p>
-                  </div>
 
-                  <div className="text-right">
-                    <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full ${
-                      log.type === 'FACULTY_LECTURE_START'
-                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                        : 'bg-slate-200 text-slate-700'
-                    }`}>
-                      {log.type === 'FACULTY_LECTURE_START' ? '● Session Launched' : 'Concluded'}
-                    </span>
-                    <p className="text-[10px] text-slate-400 mt-1">
-                      {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • {new Date(log.timestamp).toLocaleDateString()}
-                    </p>
+                    <div className="text-right">
+                      <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full ${
+                        log.type === 'FACULTY_LECTURE_START' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-slate-200 text-slate-700'
+                      }`}>
+                        {log.type === 'FACULTY_LECTURE_START' ? '● Session Launched' : 'Concluded'}
+                      </span>
+                      <p className="text-[10px] text-slate-400 mt-1">
+                        {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • {new Date(log.timestamp).toLocaleDateString()}
+                      </p>
+                    </div>
                   </div>
-                </div>
-              ))
-            )}
+                ))
+              )}
+            </div>
           </div>
         </div>
       )}
 
-      {/* TAB 4: VERIFIED STUDENT ROSTER (WITH EXPEL BUTTON) */}
+      {/* TAB 4: VERIFIED STUDENT ROSTER */}
       {activeTab === 'roster' && (
         <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pb-3 border-b border-slate-200">
@@ -599,7 +617,7 @@ export function AdminPortal() {
                 <AlertTriangle className="w-5 h-5 text-amber-500" />
                 <span>Monthly Defaulter List (Attendance &lt; 75%)</span>
               </h3>
-              <p className="text-xs text-slate-500 mt-0.5">Students below mandatory 75% attendance threshold</p>
+              <p className="text-xs text-slate-500 mt-0.5">Students below mandatory 75% attendance in {currentDeptObj?.name}</p>
             </div>
           </div>
 
@@ -638,109 +656,142 @@ export function AdminPortal() {
         </div>
       )}
 
-      {/* TAB 6: SECURITY & POLICIES */}
+      {/* TAB 6: SECURITY & PASSWORD */}
       {activeTab === 'settings' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm flex flex-col justify-between">
+        <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm max-w-lg">
+          <h3 className="text-base font-extrabold text-slate-900 mb-2 flex items-center space-x-2">
+            <Key className="w-4 h-4 text-indigo-600" />
+            <span>Change HOD Private Password</span>
+          </h3>
+          <p className="text-xs text-slate-500 mb-4 font-medium">
+            Update the master password for {currentHodName} ({currentDeptObj?.name}).
+          </p>
+
+          {passMsg && (
+            <div className="mb-4 p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold">
+              {passMsg}
+            </div>
+          )}
+
+          {passError && (
+            <div className="mb-4 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold">
+              ⚠️ {passError}
+            </div>
+          )}
+
+          <form onSubmit={handleChangePassword} className="space-y-4">
             <div>
-              <h3 className="text-base font-extrabold text-slate-900 mb-2 flex items-center space-x-2">
-                <KeyRound className="w-4 h-4 text-indigo-600" />
-                <span>Master Faculty Launcher Passcode</span>
-              </h3>
-              <p className="text-xs text-slate-500 mb-4 font-medium">
-                Emergency master passcode for faculty login.
-              </p>
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                Current Password
+              </label>
+              <input
+                type="password"
+                value={currentPass}
+                onChange={(e) => setCurrentPass(e.target.value)}
+                placeholder="Enter current password"
+                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 focus:border-indigo-600 outline-none"
+                required
+              />
+            </div>
 
-              {facultyPassMsg && (
-                <div className="mb-4 p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold">
-                  {facultyPassMsg}
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                New Secret Password
+              </label>
+              <input
+                type="password"
+                value={newPass}
+                onChange={(e) => setNewPass(e.target.value)}
+                placeholder="Min. 6 characters"
+                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 focus:border-indigo-600 outline-none"
+                required
+              />
+            </div>
+
+            <button
+              type="submit"
+              className="w-full py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-sm transition active:scale-[0.98]"
+            >
+              Update HOD Password
+            </button>
+          </form>
+        </div>
+      )}
+
+      {/* HOD CONDUCT LECTURE MODAL */}
+      {showHodLectureModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 rounded-3xl p-6 max-w-md w-full shadow-2xl">
+            <h3 className="text-base font-extrabold text-slate-900 mb-1 flex items-center space-x-2">
+              <Play className="w-5 h-5 text-indigo-600" />
+              <span>Launch Lecture as HOD</span>
+            </h3>
+            <p className="text-xs text-slate-500 mb-4">Conduct class session as {currentHodName} ({currentDeptObj?.code})</p>
+
+            <form onSubmit={handleLaunchHodLectureSubmit} className="space-y-3">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Subject / Lecture Name</label>
+                <input
+                  type="text"
+                  value={hodSubject}
+                  onChange={(e) => setHodSubject(e.target.value)}
+                  placeholder="Enter Subject Name (e.g. Digital Signal Processing)"
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 font-bold outline-none focus:border-indigo-600"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Select Division(s)</label>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {DIVISIONS.map(div => {
+                    const isChecked = hodDivisions.includes(div);
+                    return (
+                      <button
+                        key={div}
+                        type="button"
+                        onClick={() => toggleHodDivision(div)}
+                        className={`py-2 rounded-xl text-xs font-bold border transition ${
+                          isChecked ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-slate-50 border-slate-200 text-slate-700'
+                        }`}
+                      >
+                        {div}
+                      </button>
+                    );
+                  })}
                 </div>
-              )}
+              </div>
 
-              <form onSubmit={handleUpdateFacultyPasscode} className="space-y-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                    Faculty Passcode
-                  </label>
-                  <input
-                    type="text"
-                    value={newFacultyPass}
-                    onChange={(e) => setNewFacultyPass(e.target.value)}
-                    placeholder="e.g. faculty@2026"
-                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 font-bold focus:border-indigo-600 outline-none"
-                    required
-                  />
-                </div>
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Lecture Type / Batch</label>
+                <select
+                  value={hodBatch}
+                  onChange={(e) => setHodBatch(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 font-semibold outline-none"
+                >
+                  <option value="All">All Batches (Theory Lecture)</option>
+                  <option value="B1">Batch B1 (Practical Lab)</option>
+                  <option value="B2">Batch B2 (Practical Lab)</option>
+                  <option value="B3">Batch B3 (Practical Lab)</option>
+                </select>
+              </div>
 
+              <div className="flex space-x-2 pt-3">
+                <button
+                  type="button"
+                  onClick={() => setShowHodLectureModal(false)}
+                  className="flex-1 py-2.5 rounded-xl bg-slate-100 text-slate-700 font-bold text-xs"
+                >
+                  Cancel
+                </button>
                 <button
                   type="submit"
-                  className="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm shadow-md shadow-indigo-100 transition active:scale-[0.98]"
+                  className="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md shadow-indigo-100"
                 >
-                  Update Faculty Passcode
+                  Launch Projector Screen
                 </button>
-              </form>
-            </div>
-          </div>
-
-          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm flex flex-col justify-between">
-            <div>
-              <h3 className="text-base font-extrabold text-slate-900 mb-2 flex items-center space-x-2">
-                <Key className="w-4 h-4 text-indigo-600" />
-                <span>Change HOD Private Password</span>
-              </h3>
-              <p className="text-xs text-slate-500 mb-4 font-medium">
-                Update the master password for {departmentFilter === 'all' ? 'HOD Computer Science' : departmentFilter.toUpperCase()}.
-              </p>
-
-              {passMsg && (
-                <div className="mb-4 p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold">
-                  {passMsg}
-                </div>
-              )}
-
-              {passError && (
-                <div className="mb-4 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold">
-                  ⚠️ {passError}
-                </div>
-              )}
-
-              <form onSubmit={handleChangePassword} className="space-y-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                    Current Password
-                  </label>
-                  <input
-                    type="password"
-                    value={currentPass}
-                    onChange={(e) => setCurrentPass(e.target.value)}
-                    placeholder="Enter current password"
-                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 focus:border-indigo-600 outline-none"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                    New Secret Password
-                  </label>
-                  <input
-                    type="password"
-                    value={newPass}
-                    onChange={(e) => setNewPass(e.target.value)}
-                    placeholder="Min. 6 characters"
-                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 focus:border-indigo-600 outline-none"
-                    required
-                  />
-                </div>
-
-                <button
-                  type="submit"
-                  className="w-full py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-sm transition active:scale-[0.98]"
-                >
-                  Update HOD Password
-                </button>
-              </form>
-            </div>
+              </div>
+            </form>
           </div>
         </div>
       )}
@@ -766,21 +817,8 @@ export function AdminPortal() {
       {showAddModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white border border-slate-200 rounded-3xl p-6 max-w-md w-full shadow-2xl">
-            <h3 className="text-lg font-extrabold text-slate-900 mb-4">Add Student to Roster</h3>
+            <h3 className="text-lg font-extrabold text-slate-900 mb-4">Add Student to {currentDeptObj?.code} Roster</h3>
             <form onSubmit={handleAddStudent} className="space-y-3">
-              <div>
-                <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Department</label>
-                <select
-                  value={newDept}
-                  onChange={(e) => setNewDept(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 outline-none focus:border-indigo-600"
-                >
-                  {DEPARTMENTS.map(d => (
-                    <option key={d.id} value={d.id}>{d.name}</option>
-                  ))}
-                </select>
-              </div>
-
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Roll No</label>
@@ -788,7 +826,7 @@ export function AdminPortal() {
                     type="number"
                     value={newRollNo}
                     onChange={(e) => setNewRollNo(e.target.value)}
-                    placeholder="e.g. 31"
+                    placeholder="Enter Roll No"
                     className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 outline-none focus:border-indigo-600"
                     required
                   />
@@ -799,7 +837,7 @@ export function AdminPortal() {
                     type="text"
                     value={newPrn}
                     onChange={(e) => setNewPrn(e.target.value)}
-                    placeholder="12251ET031"
+                    placeholder="e.g. 12251ET049"
                     className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 outline-none focus:border-indigo-600"
                     required
                   />
@@ -812,7 +850,7 @@ export function AdminPortal() {
                   type="text"
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
-                  placeholder="e.g. Rahul Sharma"
+                  placeholder="Enter Full Name"
                   className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 outline-none focus:border-indigo-600"
                   required
                 />

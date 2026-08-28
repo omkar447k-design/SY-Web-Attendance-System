@@ -14,7 +14,7 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'healthy', timestamp: new Date().toISOString() });
 });
 
-// Admin Routes (2-Tier HOD Security & Audit Logs)
+// Admin Routes (1 HOD per Department & Scoped Audit Logs)
 app.post('/api/admin/gatekeeper', AdminController.verifyGatekeeper);
 app.post('/api/admin/login', AdminController.login);
 app.post('/api/admin/change-password', AdminController.changePassword);
@@ -31,9 +31,9 @@ app.get('/api/admin/teachers', AdminController.getTeachers);
 app.get('/api/admin/subjects', AdminController.getSubjects);
 app.get('/api/admin/export/master', AdminController.exportMasterExcel);
 
-// Teacher Routes (Individual Teacher First-Time Setup & Login)
+// Teacher Routes (Teacher Account, Custom Subject & One-Time Password Setup)
 app.post('/api/teacher/auth', (req, res) => {
-  const { teacherName, department = 'comp', password, newPassword, isFirstTimeSetup } = req.body;
+  const { teacherName, department = 'entc', subjectName, password, newPassword, isFirstTimeSetup } = req.body;
   if (!teacherName || !teacherName.trim()) {
     return res.status(400).json({ success: false, error: 'Faculty Name is required' });
   }
@@ -42,12 +42,13 @@ app.post('/api/teacher/auth', (req, res) => {
   const cleanName = teacherName.trim();
   let teacher = teachers.find(t => t.name.toLowerCase() === cleanName.toLowerCase() && t.department === department);
 
-  // Auto-register teacher if new
+  // Auto-register teacher under this department if new
   if (!teacher) {
     teacher = {
       id: `T_${department}_${Date.now()}`,
       name: cleanName,
       department,
+      subjectName: subjectName ? subjectName.trim() : '',
       email: `${cleanName.toLowerCase().replace(/[^a-z0-9]/g, '')}@college.edu`,
       role: 'Teacher',
       password: null,
@@ -55,9 +56,12 @@ app.post('/api/teacher/auth', (req, res) => {
     };
     teachers.push(teacher);
     db.set('teachers', teachers);
+  } else if (subjectName) {
+    teacher.subjectName = subjectName.trim();
+    db.set('teachers', teachers);
   }
 
-  // Case 1: First-time setup for this teacher
+  // Case 1: First-time password setup for this teacher
   if (isFirstTimeSetup || teacher.isFirstTime || !teacher.password) {
     if (!newPassword || newPassword.length < 4) {
       return res.status(400).json({ success: false, error: 'Please enter a password with at least 4 characters.' });
@@ -71,7 +75,7 @@ app.post('/api/teacher/auth', (req, res) => {
       success: true,
       isFirstTime: false,
       message: `🎉 Password set for ${teacher.name}!`,
-      teacher: { id: teacher.id, name: teacher.name, department: teacher.department, role: 'teacher' }
+      teacher: { id: teacher.id, name: teacher.name, department: teacher.department, subjectName: teacher.subjectName, role: 'teacher' }
     });
   }
 
@@ -82,16 +86,15 @@ app.post('/api/teacher/auth', (req, res) => {
   if (valid) {
     return res.json({
       success: true,
-      teacher: { id: teacher.id, name: teacher.name, department: teacher.department, role: 'teacher' }
+      teacher: { id: teacher.id, name: teacher.name, department: teacher.department, subjectName: teacher.subjectName, role: 'teacher' }
     });
   }
 
   return res.status(401).json({ success: false, error: 'Incorrect Faculty Password.' });
 });
 
-// Check if teacher needs first-time setup
 app.post('/api/teacher/check-status', (req, res) => {
-  const { teacherName, department = 'comp' } = req.body;
+  const { teacherName, department = 'entc' } = req.body;
   if (!teacherName || !teacherName.trim()) {
     return res.json({ success: true, isFirstTime: true });
   }

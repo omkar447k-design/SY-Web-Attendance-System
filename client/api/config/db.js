@@ -1,11 +1,11 @@
-// Multi-Department & Serverless-Ready Database with Secure Configuration
+// Multi-Department Database Configuration
 export const DEPARTMENTS = [
-  { id: 'comp', name: 'Computer Science & Engineering', code: 'CSE', keywords: ['computer', 'cse', 'comp', 'software'] },
-  { id: 'it', name: 'Information Technology', code: 'IT', keywords: ['information', 'it', 'infotech'] },
-  { id: 'aids', name: 'Artificial Intelligence & Data Science', code: 'AI&DS', keywords: ['artificial', 'intelligence', 'data science', 'ai&ds', 'aids', 'ai/ds', 'ai'] },
-  { id: 'entc', name: 'Electronics & Telecommunication', code: 'ENTC', keywords: ['telecommunication', 'entc', 'electronics and telecommunication', 'e&tc', 'extc', 'etc'] },
-  { id: 'elec', name: 'Electrical Engineering', code: 'ELEC', keywords: ['electrical', 'ee', 'elec'] },
-  { id: 'instru', name: 'Instrumentation Engineering', code: 'INSTRU', keywords: ['instrumentation', 'instru', 'inst'] }
+  { id: 'comp', name: '1. Computer Science & Engineering', code: 'CSE', prnCode: 'CS', keywords: ['computer', 'cse', 'comp'] },
+  { id: 'it', name: '2. Information Technology', code: 'IT', prnCode: 'IT', keywords: ['information technology', 'infotech'] },
+  { id: 'aids', name: '3. Artificial Intelligence & Data Science', code: 'AI&DS', prnCode: 'AD', keywords: ['artificial', 'data science', 'ai&ds', 'aids', 'ai/ds', 'ai & ds'] },
+  { id: 'entc', name: '4. Electronics & Telecommunication', code: 'ENTC', prnCode: 'ET', keywords: ['electronics', 'telecommunication', 'entc', 'electronics & telecommunication', 'electronics and telecommunication', 'e&tc', 'extc', 'etc'] },
+  { id: 'elec', name: '5. Electrical Engineering', code: 'ELEC', prnCode: 'EL', keywords: ['electrical', 'ee', 'elec'] },
+  { id: 'instru', name: '6. Instrumentation Engineering', code: 'INSTRU', prnCode: 'IN', keywords: ['instrumentation', 'instru', 'inst'] }
 ];
 
 export const DIVISIONS = ['SY-A', 'SY-B', 'SY-C'];
@@ -21,31 +21,17 @@ const initialData = {
     adminGatekeeperCode: process.env.ADMIN_GATEKEEPER_CODE || 'admin',
     facultyPassword: process.env.FACULTY_MASTER_PASSCODE || 'faculty@2026'
   },
+  // 1 HOD per Department (Configured on First-Time Setup by HOD)
   hodAccounts: {
-    comp: { department: 'comp', name: 'HOD Computer Science', password: null, isFirstTime: true },
-    it: { department: 'it', name: 'HOD Information Technology', password: null, isFirstTime: true },
-    aids: { department: 'aids', name: 'HOD AI & Data Science', password: null, isFirstTime: true },
-    entc: { department: 'entc', name: 'HOD ENTC', password: null, isFirstTime: true },
-    elec: { department: 'elec', name: 'HOD Electrical', password: null, isFirstTime: true },
-    instru: { department: 'instru', name: 'HOD Instrumentation', password: null, isFirstTime: true }
+    comp: { department: 'comp', name: null, password: null, isFirstTime: true },
+    it: { department: 'it', name: null, password: null, isFirstTime: true },
+    aids: { department: 'aids', name: null, password: null, isFirstTime: true },
+    entc: { department: 'entc', name: null, password: null, isFirstTime: true },
+    elec: { department: 'elec', name: null, password: null, isFirstTime: true },
+    instru: { department: 'instru', name: null, password: null, isFirstTime: true }
   },
-  teachers: [
-    { id: 'T101', name: 'Dr. A. K. Sharma', department: 'comp', email: 'sharma@college.edu', role: 'Teacher', password: null, isFirstTime: true },
-    { id: 'T102', name: 'Prof. S. R. Patil', department: 'it', email: 'patil@college.edu', role: 'Teacher', password: null, isFirstTime: true },
-    { id: 'T103', name: 'Prof. N. V. Deshmukh', department: 'aids', email: 'deshmukh@college.edu', role: 'Teacher', password: null, isFirstTime: true },
-    { id: 'T104', name: 'Prof. V. M. Kulkarni', department: 'entc', email: 'kulkarni@college.edu', role: 'Teacher', password: null, isFirstTime: true },
-    { id: 'T105', name: 'Prof. P. R. Joshi', department: 'elec', email: 'joshi@college.edu', role: 'Teacher', password: null, isFirstTime: true },
-    { id: 'T106', name: 'Prof. M. S. Shinde', department: 'instru', email: 'shinde@college.edu', role: 'Teacher', password: null, isFirstTime: true }
-  ],
-  subjects: [
-    { id: 'SUB101', code: 'CS201', name: 'Operating Systems', department: 'comp', division: 'SY-A', type: 'Theory', teacherId: 'T101' },
-    { id: 'SUB102', code: 'CS202', name: 'Database Management Systems (DBMS)', department: 'comp', division: 'SY-A', type: 'Theory', teacherId: 'T101' },
-    { id: 'SUB103', code: 'IT201', name: 'Data Structures & Algorithms', department: 'it', division: 'SY-A', type: 'Theory', teacherId: 'T102' },
-    { id: 'SUB104', code: 'AI201', name: 'Machine Learning Foundations', department: 'aids', division: 'SY-A', type: 'Theory', teacherId: 'T103' },
-    { id: 'SUB105', code: 'ET201', name: 'Digital Signal Processing', department: 'entc', division: 'SY-A', type: 'Theory', teacherId: 'T104' },
-    { id: 'SUB106', code: 'EE201', name: 'Power Systems & Machines', department: 'elec', division: 'SY-A', type: 'Theory', teacherId: 'T105' },
-    { id: 'SUB107', code: 'IN201', name: 'Sensors & Transducers', department: 'instru', division: 'SY-A', type: 'Theory', teacherId: 'T106' }
-  ],
+  teachers: [],
+  subjects: [],
   students: [],
   sessions: [],
   attendance: [],

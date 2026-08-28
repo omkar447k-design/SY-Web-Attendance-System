@@ -50,9 +50,9 @@ app.get('/api/admin/teachers', AdminController.getTeachers);
 app.get('/api/admin/subjects', AdminController.getSubjects);
 app.get('/api/admin/export/master', AdminController.exportMasterExcel);
 
-// --- TEACHER ROUTES (First-Time Password Setup & Login) ---
+// --- TEACHER ROUTES (First-Time Password Setup & Custom Subject Login) ---
 app.post('/api/teacher/auth', (req, res) => {
-  const { teacherName, department = 'comp', password, newPassword, isFirstTimeSetup } = req.body;
+  const { teacherName, department = 'entc', subjectName, password, newPassword, isFirstTimeSetup } = req.body;
   if (!teacherName || !teacherName.trim()) {
     return res.status(400).json({ success: false, error: 'Faculty Name is required' });
   }
@@ -66,12 +66,16 @@ app.post('/api/teacher/auth', (req, res) => {
       id: `T_${department}_${Date.now()}`,
       name: cleanName,
       department,
+      subjectName: subjectName ? subjectName.trim() : '',
       email: `${cleanName.toLowerCase().replace(/[^a-z0-9]/g, '')}@college.edu`,
       role: 'Teacher',
       password: null,
       isFirstTime: true
     };
     teachers.push(teacher);
+    db.set('teachers', teachers);
+  } else if (subjectName) {
+    teacher.subjectName = subjectName.trim();
     db.set('teachers', teachers);
   }
 
@@ -88,7 +92,7 @@ app.post('/api/teacher/auth', (req, res) => {
       success: true,
       isFirstTime: false,
       message: `🎉 Password set for ${teacher.name}!`,
-      teacher: { id: teacher.id, name: teacher.name, department: teacher.department, role: 'teacher' }
+      teacher: { id: teacher.id, name: teacher.name, department: teacher.department, subjectName: teacher.subjectName, role: 'teacher' }
     });
   }
 
@@ -98,7 +102,7 @@ app.post('/api/teacher/auth', (req, res) => {
   if (valid) {
     return res.json({
       success: true,
-      teacher: { id: teacher.id, name: teacher.name, department: teacher.department, role: 'teacher' }
+      teacher: { id: teacher.id, name: teacher.name, department: teacher.department, subjectName: teacher.subjectName, role: 'teacher' }
     });
   }
 
@@ -106,7 +110,7 @@ app.post('/api/teacher/auth', (req, res) => {
 });
 
 app.post('/api/teacher/check-status', (req, res) => {
-  const { teacherName, department = 'comp' } = req.body;
+  const { teacherName, department = 'entc' } = req.body;
   if (!teacherName || !teacherName.trim()) {
     return res.json({ success: true, isFirstTime: true });
   }

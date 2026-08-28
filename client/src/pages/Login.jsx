@@ -16,15 +16,6 @@ const DEPARTMENTS = [
 
 const DIVISIONS = ['SY-A', 'SY-B', 'SY-C'];
 
-const DEFAULT_SUBJECTS = {
-  comp: ['Operating Systems (CS201)', 'Database Management Systems (CS202)', 'Computer Networks (CS203)', 'OS Practical Lab', 'DBMS Lab'],
-  it: ['Data Structures & Algorithms (IT201)', 'Object Oriented Programming (IT202)', 'Web Technologies (IT203)', 'DSA Lab'],
-  aids: ['Machine Learning Foundations (AI201)', 'Python for Data Science (AI202)', 'Applied Statistics (AI203)', 'AI Lab'],
-  entc: ['Digital Signal Processing (ET201)', 'Microcontrollers & Embedded Systems (ET202)', 'Analog Circuits (ET203)', 'DSP Lab'],
-  elec: ['Power Systems & Machines (EE201)', 'Control Systems Engineering (EE202)', 'Power Electronics (EE203)', 'Machines Lab'],
-  instru: ['Sensors & Transducers (IN201)', 'Industrial Instrumentation (IN202)', 'Process Control (IN203)', 'Instrumentation Lab']
-};
-
 function parseIdCardDetails(rawText) {
   if (!rawText) return { name: '', prn: '', departmentId: null };
 
@@ -105,7 +96,7 @@ function parseIdCardDetails(rawText) {
     }
   }
 
-  // Double-Check / Fallback from Degree Line below Enrollment No (e.g., "B. Tech in Electronics & Telecommunication")
+  // Double-Check / Fallback from Degree Line below Enrollment No
   if (!detectedDeptId) {
     const candidateBodyLines = lines.filter(line => {
       const l = line.toLowerCase();
@@ -209,21 +200,21 @@ export function Login({ onLoginSuccess }) {
   const [gatekeeperCode, setGatekeeperCode] = useState('');
   const [hodDeptList, setHodDeptList] = useState([]);
   
-  // Faculty form inside Admin Modal
-  const [teacherName, setTeacherName] = useState('Dr. A. K. Sharma');
-  const [teacherDept, setTeacherDept] = useState('comp');
+  // Faculty Teacher Form State
+  const [teacherName, setTeacherName] = useState('');
+  const [teacherDept, setTeacherDept] = useState('entc');
+  const [teacherSubject, setTeacherSubject] = useState('');
   const [selectedDivisions, setSelectedDivisions] = useState(['SY-A']);
-  const [teacherSubject, setTeacherSubject] = useState(DEFAULT_SUBJECTS['comp'][0]);
-  const [customSubject, setCustomSubject] = useState('');
   const [teacherBatch, setTeacherBatch] = useState('All');
   const [teacherIsFirstTime, setTeacherIsFirstTime] = useState(false);
   const [teacherPassword, setTeacherPassword] = useState('');
   const [teacherNewPassword, setTeacherNewPassword] = useState('');
   const [teacherConfirmPassword, setTeacherConfirmPassword] = useState('');
 
-  // HOD state inside Admin Modal
-  const [selectedHodDept, setSelectedHodDept] = useState('comp');
-  const [hodIsFirstTime, setHodIsFirstTime] = useState(false);
+  // HOD Form State (1 HOD per Department)
+  const [selectedHodDept, setSelectedHodDept] = useState('entc');
+  const [hodName, setHodName] = useState('');
+  const [hodIsFirstTime, setHodIsFirstTime] = useState(true);
   const [hodPassword, setHodPassword] = useState('');
   const [hodNewPassword, setHodNewPassword] = useState('');
   const [hodConfirmPassword, setHodConfirmPassword] = useState('');
@@ -248,14 +239,6 @@ export function Login({ onLoginSuccess }) {
         .catch(() => {});
     }
   }, [teacherName, teacherDept, modalMode]);
-
-  const handleTeacherDeptChange = (newDept) => {
-    setTeacherDept(newDept);
-    const subList = DEFAULT_SUBJECTS[newDept] || [];
-    if (subList.length > 0) {
-      setTeacherSubject(subList[0]);
-    }
-  };
 
   const toggleDivisionSelection = (div) => {
     if (selectedDivisions.includes(div)) {
@@ -410,13 +393,12 @@ export function Login({ onLoginSuccess }) {
     }
   };
 
-  // FACULTY LAUNCHER HANDLER (INSIDE DEPARTMENT ACCESS MODAL)
+  // FACULTY TEACHER LOGIN WITH CUSTOM SUBJECT & ONE-TIME PASSWORD SETUP
   const handleTeacherLogin = async (e) => {
     e.preventDefault();
-    if (!teacherName.trim()) return setAdminError('Please enter Faculty Name');
+    if (!teacherName.trim()) return setAdminError('Please enter your Faculty Name');
+    if (!teacherSubject.trim()) return setAdminError('Please enter the Subject Name you teach');
     if (selectedDivisions.length === 0) return setAdminError('Please select at least one Division (SY-A, SY-B, or SY-C)');
-    const finalSubject = customSubject.trim() ? customSubject.trim() : teacherSubject;
-    if (!finalSubject) return setAdminError('Please select or type a subject');
 
     if (teacherIsFirstTime) {
       if (!teacherNewPassword || teacherNewPassword.length < 4) {
@@ -435,6 +417,7 @@ export function Login({ onLoginSuccess }) {
       const authRes = await api.teacherAuth({
         teacherName: teacherName.trim(),
         department: teacherDept,
+        subjectName: teacherSubject.trim(),
         password: teacherPassword,
         newPassword: teacherNewPassword,
         isFirstTimeSetup: teacherIsFirstTime
@@ -448,7 +431,7 @@ export function Login({ onLoginSuccess }) {
           department: teacherDept,
           divisions: selectedDivisions,
           division: selectedDivisions.join(', '),
-          subjectName: finalSubject,
+          subjectName: teacherSubject.trim(),
           batch: teacherBatch,
           role: 'teacher'
         };
@@ -469,10 +452,11 @@ export function Login({ onLoginSuccess }) {
       const res = await api.verifyGatekeeper(gatekeeperCode);
       if (res.success) {
         setHodDeptList(res.departments || []);
-        const defaultDept = res.departments?.[0]?.id || 'comp';
+        const defaultDept = res.departments?.[0]?.id || 'entc';
         setSelectedHodDept(defaultDept);
         const curr = res.departments?.find(d => d.id === defaultDept);
         setHodIsFirstTime(Boolean(curr?.isFirstTime));
+        setHodName(curr?.hodName || '');
         setGatekeeperStage(2);
         setModalMode('select');
       }
@@ -488,6 +472,9 @@ export function Login({ onLoginSuccess }) {
     setAdminError('');
 
     if (hodIsFirstTime) {
+      if (!hodName.trim() || hodName.trim().length < 3) {
+        return setAdminError('Please enter your Full Name as HOD');
+      }
       if (!hodNewPassword || hodNewPassword.length < 6) {
         return setAdminError('Password must be at least 6 characters long');
       }
@@ -500,6 +487,7 @@ export function Login({ onLoginSuccess }) {
     try {
       const res = await api.hodLogin({
         department: selectedHodDept,
+        hodName: hodName.trim(),
         password: hodPassword,
         newPassword: hodNewPassword,
         isFirstTimeSetup: hodIsFirstTime
@@ -508,7 +496,7 @@ export function Login({ onLoginSuccess }) {
       if (res.success) {
         setShowAdminModal(false);
         onLoginSuccess('admin', {
-          name: res.hodName || `HOD ${selectedHodDept.toUpperCase()}`,
+          name: res.hodName || hodName.trim(),
           department: selectedHodDept,
           role: 'admin'
         });
@@ -552,7 +540,6 @@ export function Login({ onLoginSuccess }) {
             </div>
           </div>
 
-          {/* Error Message */}
           {error && (
             <div className="mb-5 p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs sm:text-sm leading-relaxed font-semibold flex items-start space-x-2">
               <AlertTriangle className="w-4 h-4 text-rose-600 flex-shrink-0 mt-0.5" />
@@ -723,7 +710,7 @@ export function Login({ onLoginSuccess }) {
                   max="120"
                   value={rollNo}
                   onChange={(e) => setRollNo(e.target.value)}
-                  placeholder="Type e.g. 24"
+                  placeholder="Enter Roll Number"
                   className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-base text-slate-900 font-bold focus:border-indigo-600 focus:bg-white outline-none"
                   required
                 />
@@ -776,7 +763,7 @@ export function Login({ onLoginSuccess }) {
                   isNameLocked
                     ? 'bg-slate-100 border-slate-300 text-slate-700 cursor-not-allowed'
                     : 'bg-slate-50 border-slate-300 text-slate-900 focus:border-indigo-600'
-                }`}
+                  }`}
                 required
               />
             </div>
@@ -820,7 +807,7 @@ export function Login({ onLoginSuccess }) {
 
       </div>
 
-      {/* DEPARTMENT ADMIN & FACULTY LAUNCHER MODAL */}
+      {/* DEPARTMENT ADMIN & FACULTY TEACHER LOGIN MODAL */}
       {showAdminModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl relative">
@@ -875,7 +862,7 @@ export function Login({ onLoginSuccess }) {
               </div>
             )}
 
-            {/* STAGE 2: MODE SELECTOR (FACULTY LAUNCHER vs HOD ADMIN) */}
+            {/* STAGE 2: ROLE SELECTOR */}
             {gatekeeperStage === 2 && modalMode === 'select' && (
               <div className="space-y-4">
                 <div className="text-center mb-5">
@@ -893,9 +880,9 @@ export function Login({ onLoginSuccess }) {
                   </div>
                   <div>
                     <h4 className="text-sm font-extrabold text-slate-900 group-hover:text-indigo-600 transition">
-                      👨‍🏫 Faculty Lecture Launcher
+                      👨‍🏫 Faculty / Teacher Login
                     </h4>
-                    <p className="text-xs text-slate-500">Launch rotating PIN projector attendance for your class</p>
+                    <p className="text-xs text-slate-500">Log in with your department, custom subject & password</p>
                   </div>
                 </button>
 
@@ -911,7 +898,7 @@ export function Login({ onLoginSuccess }) {
                     <h4 className="text-sm font-extrabold text-slate-900 group-hover:text-indigo-600 transition">
                       👑 Department HOD Portal
                     </h4>
-                    <p className="text-xs text-slate-500">View live student audit logs, roster, and defaulter list</p>
+                    <p className="text-xs text-slate-500">Only 1 HOD per department with private master credentials</p>
                   </div>
                 </button>
 
@@ -927,13 +914,13 @@ export function Login({ onLoginSuccess }) {
               </div>
             )}
 
-            {/* STAGE 2: FACULTY LAUNCHER FORM */}
+            {/* STAGE 2: TEACHER LOGIN FORM (CUSTOM SUBJECT + ONE-TIME PASSWORD SETUP) */}
             {gatekeeperStage === 2 && modalMode === 'teacher' && (
               <div>
                 <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-100">
                   <h3 className="text-base font-extrabold text-slate-900 flex items-center space-x-2">
                     <Users className="w-4 h-4 text-indigo-600" />
-                    <span>Faculty Lecture Launcher</span>
+                    <span>Faculty / Teacher Login</span>
                   </h3>
                   <button
                     type="button"
@@ -951,33 +938,53 @@ export function Login({ onLoginSuccess }) {
                 )}
 
                 <form onSubmit={handleTeacherLogin} className="space-y-3 max-h-[70vh] overflow-y-auto pr-1">
+                  
+                  {/* Faculty Name */}
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Faculty Name</label>
+                    <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Faculty / Professor Name</label>
                     <input
                       type="text"
                       value={teacherName}
                       onChange={(e) => setTeacherName(e.target.value)}
-                      placeholder="e.g. Dr. A. K. Sharma"
+                      placeholder="Enter Full Professor Name"
                       className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 font-bold outline-none focus:border-indigo-600"
                       required
                     />
                   </div>
 
+                  {/* Teaching Department */}
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Department</label>
+                    <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Teaching In Department</label>
                     <select
                       value={teacherDept}
-                      onChange={(e) => handleTeacherDeptChange(e.target.value)}
+                      onChange={(e) => setTeacherDept(e.target.value)}
                       className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 font-semibold outline-none focus:border-indigo-600"
                     >
                       {DEPARTMENTS.map(d => (
                         <option key={d.id} value={d.id}>{d.name}</option>
                       ))}
                     </select>
+                    <p className="text-[10px] text-slate-400 mt-0.5">
+                      🔒 Only students of this department will receive attendance prompts.
+                    </p>
                   </div>
 
+                  {/* Custom Subject Name Input (No hardcoded options) */}
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Divisions</label>
+                    <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Subject / Lecture Name</label>
+                    <input
+                      type="text"
+                      value={teacherSubject}
+                      onChange={(e) => setTeacherSubject(e.target.value)}
+                      placeholder="Enter Subject Name (e.g. Digital Signal Processing)"
+                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 font-bold outline-none focus:border-indigo-600"
+                      required
+                    />
+                  </div>
+
+                  {/* Multi-Division Selection */}
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Select Division(s)</label>
                     <div className="grid grid-cols-3 gap-1.5">
                       {DIVISIONS.map(div => {
                         const isChecked = selectedDivisions.includes(div);
@@ -999,36 +1006,9 @@ export function Login({ onLoginSuccess }) {
                     </div>
                   </div>
 
+                  {/* Batch Selection */}
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Subject</label>
-                    <select
-                      value={teacherSubject}
-                      onChange={(e) => {
-                        setTeacherSubject(e.target.value);
-                        if (e.target.value !== 'other') setCustomSubject('');
-                      }}
-                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 font-semibold outline-none focus:border-indigo-600 mb-1.5"
-                    >
-                      {(DEFAULT_SUBJECTS[teacherDept] || []).map((sub, idx) => (
-                        <option key={idx} value={sub}>{sub}</option>
-                      ))}
-                      <option value="other">➕ Custom Subject...</option>
-                    </select>
-
-                    {teacherSubject === 'other' && (
-                      <input
-                        type="text"
-                        value={customSubject}
-                        onChange={(e) => setCustomSubject(e.target.value)}
-                        placeholder="Type subject name"
-                        className="w-full bg-slate-50 border border-indigo-400 rounded-xl px-3 py-1.5 text-xs text-slate-900 outline-none"
-                        required
-                      />
-                    )}
-                  </div>
-
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Batch</label>
+                    <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Lecture Type / Batch</label>
                     <select
                       value={teacherBatch}
                       onChange={(e) => setTeacherBatch(e.target.value)}
@@ -1041,11 +1021,12 @@ export function Login({ onLoginSuccess }) {
                     </select>
                   </div>
 
+                  {/* One-Time Password Setup vs Password Login */}
                   {teacherIsFirstTime ? (
                     <div className="p-3 rounded-xl bg-indigo-50/80 border border-indigo-200 space-y-2">
                       <div className="text-[11px] font-bold text-indigo-900 flex items-center space-x-1">
                         <Sparkles className="w-3 h-3 text-indigo-600" />
-                        <span>First-Time Setup: Set Private Password</span>
+                        <span>First-Time Setup: Set your Private Password</span>
                       </div>
                       <input
                         type="password"
@@ -1071,7 +1052,7 @@ export function Login({ onLoginSuccess }) {
                         type="password"
                         value={teacherPassword}
                         onChange={(e) => setTeacherPassword(e.target.value)}
-                        placeholder="Enter your password"
+                        placeholder="Enter your faculty password"
                         className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 font-semibold outline-none focus:border-indigo-600"
                         required
                       />
@@ -1091,14 +1072,14 @@ export function Login({ onLoginSuccess }) {
                       disabled={loading}
                       className="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md shadow-indigo-100 transition active:scale-95"
                     >
-                      {loading ? 'Launching...' : 'Launch Projector Session →'}
+                      {loading ? 'Logging in...' : teacherIsFirstTime ? 'Save Password & Launch' : 'Enter Faculty Portal →'}
                     </button>
                   </div>
                 </form>
               </div>
             )}
 
-            {/* STAGE 2: HOD LOGIN FORM */}
+            {/* STAGE 2: HOD LOGIN FORM (1 HOD PER DEPARTMENT WITH FIRST-TIME SETUP) */}
             {gatekeeperStage === 2 && modalMode === 'hod' && (
               <div>
                 <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-100">
@@ -1132,6 +1113,7 @@ export function Login({ onLoginSuccess }) {
                         setSelectedHodDept(e.target.value);
                         const curr = hodDeptList.find(d => d.id === e.target.value);
                         setHodIsFirstTime(Boolean(curr?.isFirstTime));
+                        setHodName(curr?.hodName || '');
                         setAdminError('');
                       }}
                       className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 font-semibold focus:border-indigo-600 outline-none"
@@ -1146,8 +1128,21 @@ export function Login({ onLoginSuccess }) {
                     <div className="space-y-3 p-3.5 rounded-2xl bg-indigo-50/60 border border-indigo-200">
                       <div className="text-xs font-bold text-indigo-900 flex items-center space-x-1.5">
                         <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
-                        <span>First-Time HOD Password Setup</span>
+                        <span>First-Time HOD Registration & Setup</span>
                       </div>
+                      
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">HOD Full Name</label>
+                        <input
+                          type="text"
+                          value={hodName}
+                          onChange={(e) => setHodName(e.target.value)}
+                          placeholder="Enter your Full Name as HOD"
+                          className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 font-bold outline-none focus:border-indigo-600"
+                          required
+                        />
+                      </div>
+
                       <div>
                         <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Create Private Password</label>
                         <input
@@ -1173,14 +1168,17 @@ export function Login({ onLoginSuccess }) {
                     </div>
                   ) : (
                     <div>
+                      <div className="mb-2 p-2.5 rounded-xl bg-slate-100 text-xs font-bold text-slate-800">
+                        👨‍🏫 Verified HOD: <span className="text-indigo-600">{hodName || 'Department Head'}</span>
+                      </div>
                       <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                        HOD Password
+                        HOD Private Password
                       </label>
                       <input
                         type="password"
                         value={hodPassword}
                         onChange={(e) => setHodPassword(e.target.value)}
-                        placeholder="Enter HOD password"
+                        placeholder="Enter your HOD password"
                         autoFocus
                         className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 focus:border-indigo-600 focus:bg-white outline-none"
                         required
@@ -1201,7 +1199,7 @@ export function Login({ onLoginSuccess }) {
                       disabled={loading}
                       className="flex-1 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm shadow-md shadow-indigo-100 transition active:scale-95"
                     >
-                      {loading ? 'Authenticating...' : hodIsFirstTime ? 'Save Password & Enter' : 'Unlock HOD Portal'}
+                      {loading ? 'Authenticating...' : hodIsFirstTime ? 'Create HOD Account & Enter' : 'Unlock HOD Portal'}
                     </button>
                   </div>
                 </form>

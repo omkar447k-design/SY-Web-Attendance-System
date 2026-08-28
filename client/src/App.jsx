@@ -44,6 +44,13 @@ export function App() {
     localStorage.removeItem('sy_auth_user');
   };
 
+  const handleLaunchLectureAsHod = (teacherProfile) => {
+    setRole('teacher');
+    setUser(teacherProfile);
+    localStorage.setItem('sy_auth_role', 'teacher');
+    localStorage.setItem('sy_auth_user', JSON.stringify(teacherProfile));
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-['Plus_Jakarta_Sans',sans-serif]">
       <Navbar role={role} user={user} onLogout={handleLogout} />
@@ -60,11 +67,13 @@ export function App() {
         )}
 
         {role === 'admin' && (
-          <AdminPortal />
+          <AdminPortal
+            hodProfile={user}
+            onLaunchLectureAsHod={handleLaunchLectureAsHod}
+          />
         )}
       </main>
 
-      {/* Clean White Academic Footer */}
       <footer className="border-t border-slate-200 py-4 text-center text-xs text-slate-500 bg-white">
         <p>Engineering Multi-Department Attendance System • SY 2025-2026</p>
       </footer>
