@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { GraduationCap, Users, Shield, ArrowRight, Smartphone, Lock, X, Building2, Camera, CheckCircle2, Sparkles, User, BookOpen, CheckSquare, Square } from 'lucide-react';
+import { GraduationCap, Users, Shield, ArrowRight, Smartphone, Lock, X, Building2, Camera, CheckCircle2, Sparkles, User, BookOpen, CheckSquare, Square, KeyRound, AlertTriangle, ShieldCheck } from 'lucide-react';
 import { createWorker } from 'tesseract.js';
 import { api } from '../services/api';
 import { getDeviceIdentity } from '../services/fingerprint';
@@ -102,7 +102,7 @@ export function Login({ onLoginSuccess }) {
   const [prn, setPrn] = useState('');
   const [name, setName] = useState('');
 
-  // ID Card Upload & OCR state
+  // ID Card Upload & OCR state (MANDATORY FOR LEGITIMACY)
   const [idCardPreview, setIdCardPreview] = useState(null);
   const [ocrScanning, setOcrScanning] = useState(false);
   const [ocrProgress, setOcrProgress] = useState(0);
@@ -110,17 +110,25 @@ export function Login({ onLoginSuccess }) {
   const [ocrSuccessMsg, setOcrSuccessMsg] = useState('');
   const fileInputRef = useRef(null);
 
-  // Teacher dynamic form state with Multi-Division Checkboxes
+  // Teacher dynamic form state with Multi-Division & Passcode Protection
   const [teacherName, setTeacherName] = useState('Dr. A. K. Sharma');
   const [teacherDept, setTeacherDept] = useState('comp');
-  const [selectedDivisions, setSelectedDivisions] = useState(['SY-A']); // Multi-select array e.g. ['SY-A', 'SY-B']
+  const [selectedDivisions, setSelectedDivisions] = useState(['SY-A']);
   const [teacherSubject, setTeacherSubject] = useState(DEFAULT_SUBJECTS['comp'][0]);
   const [customSubject, setCustomSubject] = useState('');
   const [teacherBatch, setTeacherBatch] = useState('All');
+  const [facultyPasscode, setFacultyPasscode] = useState('');
 
-  // Secret Admin modal state
+  // 2-Tier HOD Admin Modal State
   const [showAdminModal, setShowAdminModal] = useState(false);
-  const [adminPassword, setAdminPassword] = useState('');
+  const [gatekeeperStage, setGatekeeperStage] = useState(1); // 1: Enter Gatekeeper Code, 2: Select Dept & HOD Password
+  const [gatekeeperCode, setGatekeeperCode] = useState('');
+  const [hodDeptList, setHodDeptList] = useState([]);
+  const [selectedHodDept, setSelectedHodDept] = useState('comp');
+  const [hodIsFirstTime, setHodIsFirstTime] = useState(false);
+  const [hodPassword, setHodPassword] = useState('');
+  const [hodNewPassword, setHodNewPassword] = useState('');
+  const [hodConfirmPassword, setHodConfirmPassword] = useState('');
 
   // UI state
   const [loading, setLoading] = useState(false);
@@ -143,7 +151,6 @@ export function Login({ onLoginSuccess }) {
 
   const toggleDivisionSelection = (div) => {
     if (selectedDivisions.includes(div)) {
-      // Don't allow unselecting if it's the only one
       if (selectedDivisions.length > 1) {
         setSelectedDivisions(selectedDivisions.filter(d => d !== div));
       }
@@ -160,19 +167,19 @@ export function Login({ onLoginSuccess }) {
     setOcrSuccessMsg('');
     setOcrScanning(true);
     setOcrProgress(10);
-    setOcrStatusText('Preparing ID image for high-speed scanning...');
+    setOcrStatusText('Optimizing ID image for fast scanning...');
 
     try {
       const compressedDataUrl = await compressImage(file);
       setIdCardPreview(compressedDataUrl);
 
-      setOcrProgress(30);
-      setOcrStatusText('Initializing AI OCR reader...');
+      setOcrProgress(35);
+      setOcrStatusText('Analyzing ID Card via AI OCR...');
 
       const worker = await createWorker('eng');
       
-      setOcrProgress(60);
-      setOcrStatusText('Reading name from physical ID card...');
+      setOcrProgress(65);
+      setOcrStatusText('Extracting verified student name...');
 
       const ret = await worker.recognize(compressedDataUrl);
       await worker.terminate();
@@ -182,9 +189,9 @@ export function Login({ onLoginSuccess }) {
 
       if (detectedName) {
         setName(detectedName);
-        setOcrSuccessMsg(`✅ AI detected Name: "${detectedName}"`);
+        setOcrSuccessMsg(`✅ Verified ID Card: Name recognized as "${detectedName}"`);
       } else {
-        setOcrSuccessMsg('📷 ID photo attached. Please enter your name below.');
+        setOcrSuccessMsg('📷 ID photo attached. Please verify your name below.');
       }
     } catch (err) {
       console.error('OCR Error:', err);
@@ -197,13 +204,26 @@ export function Login({ onLoginSuccess }) {
   const handleRemoveIdPhoto = () => {
     setIdCardPreview(null);
     setOcrSuccessMsg('');
+    setName('');
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const handleStudentLogin = async (e) => {
     e.preventDefault();
-    if (!rollNo) return setError('Please enter your Roll Number');
     setError('');
+
+    // STRICT LEGITIMACY REQUIREMENT: ID Card must be uploaded
+    if (!idCardPreview) {
+      setError('🛑 College ID Card Required: You must take or upload a clear photo of your physical college ID card.');
+      return;
+    }
+
+    if (!name || name.trim().length < 3) {
+      setError('🛑 Name Required: Please ensure your full student name is readable from your ID card.');
+      return;
+    }
+
+    if (!rollNo) return setError('Please enter your Roll Number');
     setLoading(true);
 
     try {
@@ -211,8 +231,8 @@ export function Login({ onLoginSuccess }) {
       const res = await api.studentLogin({
         rollNo: Number(rollNo),
         prn: prn ? String(prn) : undefined,
-        name: name ? String(name).trim() : undefined,
-        idCardPhoto: idCardPreview || undefined,
+        name: name.trim(),
+        idCardPhoto: idCardPreview,
         department,
         division,
         deviceId,
@@ -232,6 +252,7 @@ export function Login({ onLoginSuccess }) {
   const handleTeacherLogin = async (e) => {
     e.preventDefault();
     if (!teacherName.trim()) return setError('Please enter Faculty Name');
+    if (!facultyPasscode) return setError('Please enter the Faculty Security Passcode');
     if (selectedDivisions.length === 0) return setError('Please select at least one Division (SY-A, SY-B, or SY-C)');
     const finalSubject = customSubject.trim() ? customSubject.trim() : teacherSubject;
     if (!finalSubject) return setError('Please select or type a subject');
@@ -239,6 +260,9 @@ export function Login({ onLoginSuccess }) {
     setError('');
     setLoading(true);
     try {
+      // Verify Faculty Passcode with backend
+      await api.verifyFacultyPasscode(facultyPasscode);
+
       const teacherProfile = {
         id: `T_${teacherDept}_${Date.now()}`,
         name: teacherName.trim(),
@@ -251,24 +275,67 @@ export function Login({ onLoginSuccess }) {
       };
       onLoginSuccess('teacher', teacherProfile);
     } catch (err) {
-      setError(err.message || 'Teacher login failed');
+      setError(err.message || 'Invalid Faculty Security Passcode. Access restricted.');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleAdminLogin = async (e) => {
+  // Tier 1 Gatekeeper Submit
+  const handleGatekeeperSubmit = async (e) => {
     e.preventDefault();
     setAdminError('');
     setLoading(true);
     try {
-      const res = await api.adminLogin(adminPassword);
+      const res = await api.verifyGatekeeper(gatekeeperCode);
       if (res.success) {
-        setShowAdminModal(false);
-        onLoginSuccess('admin', { name: 'HOD / Department Admin', role: 'admin' });
+        setHodDeptList(res.departments || []);
+        const defaultDept = res.departments?.[0]?.id || 'comp';
+        setSelectedHodDept(defaultDept);
+        const curr = res.departments?.find(d => d.id === defaultDept);
+        setHodIsFirstTime(Boolean(curr?.isFirstTime));
+        setGatekeeperStage(2);
       }
     } catch (err) {
-      setAdminError(err.message || 'Invalid Admin Password');
+      setAdminError(err.message || 'Invalid College Access Code');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Tier 2 HOD Department Login & First-Time Setup Submit
+  const handleHodLoginSubmit = async (e) => {
+    e.preventDefault();
+    setAdminError('');
+
+    if (hodIsFirstTime) {
+      if (!hodNewPassword || hodNewPassword.length < 6) {
+        return setAdminError('Password must be at least 6 characters long');
+      }
+      if (hodNewPassword !== hodConfirmPassword) {
+        return setAdminError('Passwords do not match');
+      }
+    }
+
+    setLoading(true);
+    try {
+      const res = await api.hodLogin({
+        department: selectedHodDept,
+        password: hodPassword,
+        newPassword: hodNewPassword,
+        isFirstTimeSetup: hodIsFirstTime
+      });
+
+      if (res.success) {
+        setShowAdminModal(false);
+        onLoginSuccess('admin', {
+          name: res.hodName || `HOD ${selectedHodDept.toUpperCase()}`,
+          department: selectedHodDept,
+          role: 'admin'
+        });
+      }
+    } catch (err) {
+      setAdminError(err.message || 'HOD Authentication Failed');
     } finally {
       setLoading(false);
     }
@@ -323,12 +390,13 @@ export function Login({ onLoginSuccess }) {
 
           {/* Error Message */}
           {error && (
-            <div className="mb-5 p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs sm:text-sm leading-relaxed font-medium">
-              ⚠️ {error}
+            <div className="mb-5 p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs sm:text-sm leading-relaxed font-semibold flex items-start space-x-2">
+              <AlertTriangle className="w-4 h-4 text-rose-600 flex-shrink-0 mt-0.5" />
+              <span>{error}</span>
             </div>
           )}
 
-          {/* STUDENT LOGIN TAB */}
+          {/* STUDENT LOGIN TAB (STRICT ID CARD VERIFICATION & HARDWARE LOCK) */}
           {activeTab === 'student' && (
             <form onSubmit={handleStudentLogin} className="space-y-4">
               
@@ -351,7 +419,7 @@ export function Login({ onLoginSuccess }) {
                 </select>
               </div>
 
-              {/* Division Selection Bar (SY-A, SY-B, SY-C) */}
+              {/* Division Selection Bar */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
                   Select Division
@@ -406,14 +474,14 @@ export function Login({ onLoginSuccess }) {
                 </div>
               </div>
 
-              {/* ID CARD UPLOAD & OCR NAME RECOGNITION */}
+              {/* MANDATORY ID CARD UPLOAD & AI OCR (Camera & Gallery on iOS and Android) */}
               <div className="pt-2">
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center justify-between">
-                  <span className="flex items-center space-x-1.5">
-                    <Camera className="w-3.5 h-3.5 text-indigo-600" />
-                    <span>Upload / Snap College ID Card</span>
+                  <span className="flex items-center space-x-1.5 text-indigo-700">
+                    <Camera className="w-3.5 h-3.5" />
+                    <span>Upload College ID Card <span className="text-rose-500 font-bold">*MANDATORY</span></span>
                   </span>
-                  <span className="text-[10px] text-slate-400 font-normal normal-case">Camera & Gallery (iOS & Android)</span>
+                  <span className="text-[10px] text-slate-400 font-normal normal-case">Camera & Gallery</span>
                 </label>
 
                 <input
@@ -428,17 +496,17 @@ export function Login({ onLoginSuccess }) {
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
-                    className="w-full p-4 rounded-2xl border-2 border-dashed border-slate-300 hover:border-indigo-500 bg-slate-50 hover:bg-indigo-50/30 flex flex-col items-center justify-center space-y-2 transition-all cursor-pointer group"
+                    className="w-full p-4 rounded-2xl border-2 border-dashed border-indigo-300 hover:border-indigo-600 bg-indigo-50/40 hover:bg-indigo-50/80 flex flex-col items-center justify-center space-y-2 transition-all cursor-pointer group"
                   >
-                    <div className="w-10 h-10 rounded-xl bg-white border border-slate-200 group-hover:border-indigo-300 flex items-center justify-center text-slate-500 group-hover:text-indigo-600 shadow-sm transition">
+                    <div className="w-10 h-10 rounded-xl bg-white border border-indigo-200 group-hover:border-indigo-400 flex items-center justify-center text-indigo-600 shadow-sm transition">
                       <Camera className="w-5 h-5" />
                     </div>
                     <div className="text-center">
-                      <p className="text-xs font-bold text-slate-800 group-hover:text-indigo-600">
-                        📸 Tap to Snap or Choose from Gallery
+                      <p className="text-xs font-extrabold text-indigo-900">
+                        📸 Tap to Snap or Choose ID from Gallery
                       </p>
-                      <p className="text-[11px] text-slate-500 mt-0.5">
-                        AI will automatically read and fill your Name!
+                      <p className="text-[11px] text-indigo-700 mt-0.5 font-medium">
+                        Clear photo required to verify name and prevent fake logins
                       </p>
                     </div>
                   </button>
@@ -453,7 +521,7 @@ export function Login({ onLoginSuccess }) {
                       <div className="flex-1 overflow-hidden">
                         <div className="flex items-center space-x-1 text-xs font-bold text-slate-900">
                           <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
-                          <span className="truncate">ID Card Attached</span>
+                          <span className="truncate">Physical ID Card Attached</span>
                         </div>
                         <p className="text-[11px] text-slate-500 mt-0.5">Saved for HOD / Faculty Verification</p>
                       </div>
@@ -461,7 +529,7 @@ export function Login({ onLoginSuccess }) {
                         type="button"
                         onClick={handleRemoveIdPhoto}
                         className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 border border-slate-200 transition"
-                        title="Remove ID Card"
+                        title="Remove and Re-upload ID Card"
                       >
                         <X className="w-4 h-4" />
                       </button>
@@ -500,7 +568,7 @@ export function Login({ onLoginSuccess }) {
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center justify-between">
                   <span>Student Full Name</span>
                   <span className="text-[10px] text-indigo-600 font-semibold normal-case">
-                    {name ? '✨ Detected from ID' : '(Auto-fills from ID Card)'}
+                    {name ? '✨ Auto-Detected from ID' : '(Reads from ID Card)'}
                   </span>
                 </label>
                 <input
@@ -509,29 +577,31 @@ export function Login({ onLoginSuccess }) {
                   onChange={(e) => setName(e.target.value)}
                   placeholder="e.g. Omkar Pawar"
                   className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 font-bold focus:border-indigo-600 focus:bg-white outline-none"
+                  required
                 />
               </div>
 
               <div className="pt-2">
                 <button
                   type="submit"
-                  disabled={loading || ocrScanning}
-                  className="w-full py-3.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm shadow-lg shadow-indigo-200 flex items-center justify-center space-x-2 transition-all active:scale-[0.98] disabled:opacity-50"
+                  disabled={loading || ocrScanning || !idCardPreview}
+                  className="w-full py-3.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm shadow-lg shadow-indigo-200 flex items-center justify-center space-x-2 transition-all active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed"
                 >
-                  <span>{loading ? 'Binding Device & Entering...' : 'Enter Student Portal'}</span>
+                  <ShieldCheck className="w-4 h-4" />
+                  <span>{loading ? 'Binding Phone & Entering...' : 'Verify ID & Enter Student Portal'}</span>
                   <ArrowRight className="w-4 h-4" />
                 </button>
               </div>
 
               <div className="text-center pt-2">
                 <p className="text-[11px] text-slate-500 font-medium">
-                  🔒 1-Device Binding: Your smartphone will be permanently locked to this Roll Number.
+                  🔒 1-Device Binding: Your phone will be locked to this Roll Number.
                 </p>
               </div>
             </form>
           )}
 
-          {/* TEACHER / FACULTY TAB (Name, Department, Subject, and Multi-Division Checkboxes) */}
+          {/* TEACHER / FACULTY TAB (Passcode Protected to Prevent Student Intrusion) */}
           {activeTab === 'teacher' && (
             <form onSubmit={handleTeacherLogin} className="space-y-4">
               
@@ -570,14 +640,14 @@ export function Login({ onLoginSuccess }) {
                 </select>
               </div>
 
-              {/* MULTI-DIVISION CHECKBOXES (SY-A, SY-B, SY-C - Select 1 or Multiple!) */}
+              {/* Multi-Division Checkboxes (SY-A, SY-B, SY-C) */}
               <div>
                 <div className="flex items-center justify-between mb-1.5">
                   <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
                     Select Class / Division(s)
                   </label>
                   <span className="text-[11px] text-indigo-600 font-bold">
-                    {selectedDivisions.length > 1 ? `Combined (${selectedDivisions.join(' + ')})` : 'Single Class'}
+                    {selectedDivisions.length > 1 ? `Combined (${selectedDivisions.join(' + ')})` : 'Single Division'}
                   </span>
                 </div>
                 
@@ -605,9 +675,6 @@ export function Login({ onLoginSuccess }) {
                     );
                   })}
                 </div>
-                <p className="text-[11px] text-slate-500 mt-1">
-                  💡 Tip: You can tick multiple divisions (e.g. SY-A and SY-B) for combined lectures!
-                </p>
               </div>
 
               {/* Subject Selection / Custom Subject */}
@@ -660,6 +727,23 @@ export function Login({ onLoginSuccess }) {
                 </select>
               </div>
 
+              {/* FACULTY SECURITY PASSCODE (Restricts Student Access) */}
+              <div className="pt-1">
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center space-x-1.5">
+                  <KeyRound className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>Faculty Security Passcode</span>
+                </label>
+                <input
+                  type="password"
+                  value={facultyPasscode}
+                  onChange={(e) => setFacultyPasscode(e.target.value)}
+                  placeholder="Enter faculty passcode"
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 font-semibold focus:border-indigo-600 focus:bg-white outline-none"
+                  required
+                />
+                <p className="text-[10px] text-slate-400 mt-1">Default passcode: <code className="text-slate-600 font-mono">faculty@2026</code> (Set by HOD)</p>
+              </div>
+
               <div className="pt-2">
                 <button
                   type="submit"
@@ -675,10 +759,14 @@ export function Login({ onLoginSuccess }) {
 
         </div>
 
-        {/* Subtle Discrete Admin Link for HOD */}
+        {/* Discrete Admin Link for HOD */}
         <div className="text-center mt-6">
           <button
-            onClick={() => { setShowAdminModal(true); setAdminError(''); }}
+            onClick={() => {
+              setShowAdminModal(true);
+              setGatekeeperStage(1);
+              setAdminError('');
+            }}
             className="text-xs text-slate-400 hover:text-slate-700 font-medium transition flex items-center justify-center space-x-1 mx-auto"
           >
             <Lock className="w-3 h-3" />
@@ -688,10 +776,10 @@ export function Login({ onLoginSuccess }) {
 
       </div>
 
-      {/* SECURE ADMIN PASSWORD MODAL */}
+      {/* 2-TIER HOD ADMIN AUTHENTICATION MODAL */}
       {showAdminModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 max-w-sm w-full shadow-2xl relative">
+          <div className="bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl relative">
             <button
               onClick={() => setShowAdminModal(false)}
               className="absolute top-4 right-4 p-1.5 text-slate-400 hover:text-slate-600 rounded-lg bg-slate-100 transition"
@@ -699,44 +787,158 @@ export function Login({ onLoginSuccess }) {
               <X className="w-4 h-4" />
             </button>
 
-            <div className="text-center mb-5">
-              <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center mx-auto mb-2 border border-indigo-100">
-                <Shield className="w-6 h-6" />
-              </div>
-              <h3 className="text-lg font-extrabold text-slate-900">HOD Admin Authentication</h3>
-              <p className="text-xs text-slate-500 mt-0.5 font-medium">Protected with anti-brute force lockout</p>
-            </div>
+            {/* STAGE 1: GATEKEEPER PASSCODE */}
+            {gatekeeperStage === 1 && (
+              <div>
+                <div className="text-center mb-5">
+                  <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center mx-auto mb-2 border border-indigo-100">
+                    <Shield className="w-6 h-6" />
+                  </div>
+                  <h3 className="text-lg font-extrabold text-slate-900">College Administration Portal</h3>
+                  <p className="text-xs text-slate-500 mt-0.5 font-medium">Enter College Access Code to proceed to HOD Login</p>
+                </div>
 
-            {adminError && (
-              <div className="mb-4 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium">
-                ⚠️ {adminError}
+                {adminError && (
+                  <div className="mb-4 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium">
+                    ⚠️ {adminError}
+                  </div>
+                )}
+
+                <form onSubmit={handleGatekeeperSubmit} className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                      College Access Code
+                    </label>
+                    <input
+                      type="password"
+                      value={gatekeeperCode}
+                      onChange={(e) => setGatekeeperCode(e.target.value)}
+                      placeholder="Enter access code (Default: admin)"
+                      autoFocus
+                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 focus:border-indigo-600 focus:bg-white outline-none"
+                      required
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm shadow-md shadow-indigo-100 transition active:scale-95"
+                  >
+                    {loading ? 'Verifying...' : 'Unlock HOD Department Login →'}
+                  </button>
+                </form>
               </div>
             )}
 
-            <form onSubmit={handleAdminLogin} className="space-y-4">
+            {/* STAGE 2: DEPARTMENT HOD LOGIN & FIRST-TIME SETUP */}
+            {gatekeeperStage === 2 && (
               <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                  Enter Admin Master Password
-                </label>
-                <input
-                  type="password"
-                  value={adminPassword}
-                  onChange={(e) => setAdminPassword(e.target.value)}
-                  placeholder="Enter secret master password"
-                  autoFocus
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 focus:border-indigo-600 focus:bg-white outline-none"
-                  required
-                />
-              </div>
+                <div className="text-center mb-5">
+                  <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center mx-auto mb-2 border border-indigo-100">
+                    <Building2 className="w-6 h-6" />
+                  </div>
+                  <h3 className="text-lg font-extrabold text-slate-900">Department HOD Login</h3>
+                  <p className="text-xs text-slate-500 mt-0.5 font-medium">
+                    {hodIsFirstTime ? '✨ First-Time Setup: Create your department password' : 'Enter your HOD master password'}
+                  </p>
+                </div>
 
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm shadow-md shadow-indigo-100 transition active:scale-95"
-              >
-                {loading ? 'Authenticating...' : 'Unlock Admin Portal'}
-              </button>
-            </form>
+                {adminError && (
+                  <div className="mb-4 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium">
+                    ⚠️ {adminError}
+                  </div>
+                )}
+
+                <form onSubmit={handleHodLoginSubmit} className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                      Select Department
+                    </label>
+                    <select
+                      value={selectedHodDept}
+                      onChange={(e) => {
+                        setSelectedHodDept(e.target.value);
+                        const curr = hodDeptList.find(d => d.id === e.target.value);
+                        setHodIsFirstTime(Boolean(curr?.isFirstTime));
+                        setAdminError('');
+                      }}
+                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 font-semibold focus:border-indigo-600 outline-none"
+                    >
+                      {DEPARTMENTS.map(d => (
+                        <option key={d.id} value={d.id}>{d.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {hodIsFirstTime ? (
+                    // FIRST TIME SETUP FIELDS
+                    <div className="space-y-3 p-3.5 rounded-2xl bg-indigo-50/60 border border-indigo-200">
+                      <div className="text-xs font-bold text-indigo-900 flex items-center space-x-1.5">
+                        <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+                        <span>First-Time HOD Password Setup</span>
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Create Private Password</label>
+                        <input
+                          type="password"
+                          value={hodNewPassword}
+                          onChange={(e) => setHodNewPassword(e.target.value)}
+                          placeholder="Min. 6 characters"
+                          className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 outline-none focus:border-indigo-600"
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Confirm Password</label>
+                        <input
+                          type="password"
+                          value={hodConfirmPassword}
+                          onChange={(e) => setHodConfirmPassword(e.target.value)}
+                          placeholder="Repeat password"
+                          className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 outline-none focus:border-indigo-600"
+                          required
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    // NORMAL LOGIN FIELD
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                        HOD Password
+                      </label>
+                      <input
+                        type="password"
+                        value={hodPassword}
+                        onChange={(e) => setHodPassword(e.target.value)}
+                        placeholder="Enter HOD password"
+                        autoFocus
+                        className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 focus:border-indigo-600 focus:bg-white outline-none"
+                        required
+                      />
+                    </div>
+                  )}
+
+                  <div className="flex space-x-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setGatekeeperStage(1)}
+                      className="py-3 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs"
+                    >
+                      Back
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={loading}
+                      className="flex-1 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm shadow-md shadow-indigo-100 transition active:scale-95"
+                    >
+                      {loading ? 'Authenticating...' : hodIsFirstTime ? 'Save Password & Enter' : 'Unlock HOD Portal'}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            )}
+
           </div>
         </div>
       )}

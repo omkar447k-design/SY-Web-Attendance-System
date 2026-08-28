@@ -5,47 +5,80 @@ import { DeviceService } from '../services/deviceService.js';
 export class StudentController {
   static login(req, res) {
     const { rollNo, prn, name, idCardPhoto, department = 'comp', division = 'SY-A', deviceId, fingerprint } = req.body;
+    
     if (!rollNo) {
       return res.status(400).json({ success: false, error: 'Roll Number is required' });
     }
 
+    if (!idCardPhoto || typeof idCardPhoto !== 'string' || idCardPhoto.length < 100) {
+      return res.status(400).json({
+        success: false,
+        error: '🛑 Mandatory College ID Card: Please upload / snap a clear photo of your physical college ID card to complete registration.'
+      });
+    }
+
+    if (!name || !name.trim() || name.trim().length < 3) {
+      return res.status(400).json({
+        success: false,
+        error: '🛑 Name Verification Required: Please ensure your full student name is clearly readable from the ID card.'
+      });
+    }
+
     const students = db.get('students');
     const numericRoll = Number(rollNo);
+    const resolvedName = name.trim();
+    const cleanPrn = prn && String(prn).trim() ? String(prn).trim() : `12251ET${String(numericRoll).padStart(3, '0')}`;
     
     let student = students.find(
       s => s.rollNo === numericRoll && s.division === division && (s.department === department || !s.department)
     );
 
-    const resolvedName = name && String(name).trim() ? String(name).trim() : `Student #${numericRoll}`;
-    const cleanPrn = prn && String(prn).trim() ? String(prn).trim() : `12251ET${String(numericRoll).padStart(3, '0')}`;
+    let isNewRegistration = false;
 
     if (!student) {
+      isNewRegistration = true;
       student = {
         id: `S_${department}_${division}_${numericRoll}`,
         rollNo: numericRoll,
         prn: cleanPrn,
         name: resolvedName,
-        idCardPhoto: idCardPhoto || null,
+        idCardPhoto: idCardPhoto,
         department,
         division,
         batch: numericRoll <= 20 ? 'B1' : numericRoll <= 40 ? 'B2' : 'B3',
         boundDeviceId: null,
         boundFingerprint: null,
-        boundAt: null
+        boundAt: null,
+        registeredAt: new Date().toISOString()
       };
       students.push(student);
       db.set('students', students);
     } else {
-      if (name && String(name).trim()) student.name = String(name).trim();
+      student.name = resolvedName;
       if (prn && String(prn).trim()) student.prn = String(prn).trim();
-      if (idCardPhoto) student.idCardPhoto = idCardPhoto;
+      student.idCardPhoto = idCardPhoto;
       db.set('students', students);
     }
 
-    const bindResult = DeviceService.verifyOrBindDevice(student.id, student.rollNo, deviceId, fingerprint);
+    const bindResult = DeviceService.verifyOrBindDevice(student.id, student.rollNo, deviceId, fingerprint, student.name);
     if (!bindResult.success) {
       return res.status(403).json(bindResult);
     }
+
+    db.addLog({
+      type: isNewRegistration ? 'NEW_STUDENT_REGISTRATION' : 'STUDENT_LOGIN',
+      studentId: student.id,
+      studentName: student.name,
+      rollNo: student.rollNo,
+      prn: student.prn,
+      department: student.department || department,
+      division: student.division,
+      batch: student.batch,
+      idCardPhoto: student.idCardPhoto,
+      deviceId: deviceId,
+      status: 'VERIFIED_PHYSICAL_ID_OCR',
+      details: isNewRegistration ? 'New student bound device via ID Card' : 'Student authenticated on verified smartphone'
+    });
 
     res.json({
       success: true,
@@ -54,7 +87,9 @@ export class StudentController {
         name: student.name,
         department: student.department || department,
         prn: student.prn,
-        idCardPhoto: student.idCardPhoto
+        idCardPhoto: student.idCardPhoto,
+        batch: student.batch,
+        boundAt: student.boundAt
       },
       token: `std_tok_${student.id}_${Date.now()}`
     });
@@ -263,7 +298,9 @@ export class StudentController {
           idCardPhoto: student.idCardPhoto,
           department: student.department,
           division: student.division,
-          batch: student.batch
+          batch: student.batch,
+          boundDeviceId: student.boundDeviceId,
+          boundAt: student.boundAt
         },
         stats: {
           overallPercentage,

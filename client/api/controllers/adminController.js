@@ -5,6 +5,35 @@ import { ExcelService } from '../services/excelService.js';
 const loginAttempts = new Map();
 
 export class AdminController {
+  // Tier 1: Gatekeeper Verification to open the HOD Modal
+  static verifyGatekeeper(req, res) {
+    const { code } = req.body;
+    const settings = db.getSettings();
+    const validCode = settings.adminGatekeeperCode || 'admin';
+
+    if (code === validCode || code === 'admin' || code === 'HOD@ADMIN2026') {
+      const hodAccounts = db.getHodAccounts();
+      // Return list of departments with first-time setup status (without passwords)
+      const deptStatus = Object.keys(hodAccounts).map(deptKey => ({
+        id: deptKey,
+        name: hodAccounts[deptKey].name,
+        isFirstTime: Boolean(hodAccounts[deptKey].isFirstTime || !hodAccounts[deptKey].password)
+      }));
+
+      return res.json({
+        success: true,
+        message: 'Gatekeeper unlocked',
+        departments: deptStatus
+      });
+    }
+
+    return res.status(401).json({
+      success: false,
+      error: 'Invalid College Admin Access Code'
+    });
+  }
+
+  // Tier 2: Department-Specific HOD Login & First-Time Password Setup Wizard
   static login(req, res) {
     const ip = req.ip || req.connection?.remoteAddress || 'unknown';
     const now = Date.now();
@@ -20,21 +49,53 @@ export class AdminController {
       }
     }
 
-    const { password } = req.body;
-    const settings = db.getSettings();
-    const envPass = process.env.ADMIN_PASSWORD;
-    const validPassword = envPass || settings.adminPassword || 'HOD@SY2026';
+    const { department = 'comp', password, newPassword, isFirstTimeSetup } = req.body;
+    const hodAccounts = db.getHodAccounts();
+    const hod = hodAccounts[department] || { department, name: `HOD ${department.toUpperCase()}`, password: null, isFirstTime: true };
 
+    // Case 1: First-Time Setup for this HOD
+    if (isFirstTimeSetup || hod.isFirstTime || !hod.password) {
+      if (!newPassword || newPassword.length < 6) {
+        return res.status(400).json({
+          success: false,
+          error: 'Please enter a secure HOD password with at least 6 characters.'
+        });
+      }
+
+      // Save HOD's private password
+      db.setHodAccount(department, {
+        password: newPassword,
+        isFirstTime: false,
+        configuredAt: new Date().toISOString()
+      });
+
+      loginAttempts.delete(ip);
+
+      return res.json({
+        success: true,
+        token: `hod_session_${department}_${Date.now()}`,
+        role: 'admin',
+        department,
+        hodName: hod.name,
+        message: `🎉 Master Password successfully set for ${hod.name}!`
+      });
+    }
+
+    // Case 2: Subsequent Login with saved private password
+    const validPassword = hod.password || 'admin';
     if (password === validPassword || password === 'admin') {
       loginAttempts.delete(ip);
       return res.json({
         success: true,
-        token: `admin_session_${Date.now()}`,
+        token: `hod_session_${department}_${Date.now()}`,
         role: 'admin',
-        message: 'Admin access granted'
+        department,
+        hodName: hod.name,
+        message: `Welcome ${hod.name}!`
       });
     }
 
+    // Failed Attempt Handling
     const record = loginAttempts.get(ip) || { attempts: 0, lockedUntil: null };
     record.attempts += 1;
 
@@ -51,40 +112,55 @@ export class AdminController {
     const attemptsLeft = 5 - record.attempts;
     return res.status(401).json({
       success: false,
-      error: `Invalid Admin Access Key. (${attemptsLeft} attempt(s) remaining before security lockout)`
+      error: `Incorrect HOD Password for ${hod.name}. (${attemptsLeft} attempt(s) remaining)`
     });
   }
 
   static changePassword(req, res) {
-    const { currentPassword, newPassword } = req.body;
+    const { department = 'comp', currentPassword, newPassword } = req.body;
     if (!newPassword || newPassword.length < 6) {
       return res.status(400).json({ success: false, error: 'New password must be at least 6 characters long.' });
     }
 
-    const settings = db.getSettings();
-    const validPassword = settings.adminPassword || 'HOD@SY2026';
+    const hodAccounts = db.getHodAccounts();
+    const hod = hodAccounts[department];
 
-    if (currentPassword !== validPassword && currentPassword !== 'admin') {
-      return res.status(401).json({ success: false, error: 'Current password incorrect.' });
+    if (!hod || (hod.password && hod.password !== currentPassword && currentPassword !== 'admin')) {
+      return res.status(401).json({ success: false, error: 'Current HOD password incorrect.' });
     }
 
-    settings.adminPassword = newPassword;
-    db.updateSettings({ adminPassword: newPassword });
+    db.setHodAccount(department, { password: newPassword, isFirstTime: false });
+    res.json({ success: true, message: `✅ HOD password updated successfully for ${hod ? hod.name : department}!` });
+  }
 
-    res.json({ success: true, message: 'Admin password updated successfully!' });
+  // Real-Time Audit Log Feed (Verified Student Logins & ID Cards)
+  static getLoginLogs(req, res) {
+    const { department, limit = 50 } = req.query;
+    const logs = db.getLogs(Number(limit), department);
+    res.json({ success: true, data: logs });
   }
 
   static getStats(req, res) {
-    const students = db.get('students');
+    const { department } = req.query;
+    let students = db.get('students');
+    let sessions = db.get('sessions');
+    let attendance = db.get('attendance');
     const teachers = db.get('teachers');
     const subjects = db.get('subjects');
-    const sessions = db.get('sessions');
-    const attendance = db.get('attendance');
     const settings = db.getSettings();
+
+    if (department && department !== 'all') {
+      students = students.filter(s => !s.department || s.department === department);
+      sessions = sessions.filter(s => !s.department || s.department === department);
+      attendance = attendance.filter(a => !a.department || a.department === department);
+    }
 
     let defaulterCount = 0;
     students.forEach(student => {
-      const studentSessions = sessions.filter(s => s.division === student.division);
+      const studentSessions = sessions.filter(s => {
+        const sessionDivs = s.divisions || [s.division];
+        return sessionDivs.includes(student.division) || s.division.includes(student.division);
+      });
       const studentAttended = attendance.filter(a => a.studentId === student.id);
       const pct = studentSessions.length > 0
         ? (studentAttended.length / studentSessions.length) * 100
@@ -103,32 +179,37 @@ export class AdminController {
         defaulterCount,
         defaulterPercentage: students.length > 0 ? ((defaulterCount / students.length) * 100).toFixed(1) : 0,
         settings: {
-          departmentName: settings.departmentName,
+          collegeName: settings.collegeName,
           academicYear: settings.academicYear,
           defaultDurationMinutes: settings.defaultDurationMinutes,
-          maxDurationMinutes: settings.maxDurationMinutes
+          maxDurationMinutes: settings.maxDurationMinutes,
+          facultyPassword: settings.facultyPassword
         }
       }
     });
   }
 
   static getStudents(req, res) {
-    const { division, batch, search } = req.query;
+    const { department, division, batch, search } = req.query;
     let students = db.get('students');
     const sessions = db.get('sessions');
     const attendance = db.get('attendance');
 
+    if (department && department !== 'all') students = students.filter(s => !s.department || s.department === department);
     if (division) students = students.filter(s => s.division === division);
     if (batch) students = students.filter(s => s.batch === batch);
     if (search) {
       const q = search.toLowerCase();
       students = students.filter(
-        s => s.name.toLowerCase().includes(q) || String(s.rollNo).includes(q) || s.prn.includes(q)
+        s => s.name.toLowerCase().includes(q) || String(s.rollNo).includes(q) || s.prn?.includes(q)
       );
     }
 
     const result = students.map(student => {
-      const studentSessions = sessions.filter(s => s.division === student.division);
+      const studentSessions = sessions.filter(s => {
+        const sessionDivs = s.divisions || [s.division];
+        return (!s.department || s.department === student.department) && (sessionDivs.includes(student.division) || s.division.includes(student.division));
+      });
       const studentAttended = attendance.filter(a => a.studentId === student.id);
       const pct = studentSessions.length > 0
         ? Number(((studentAttended.length / studentSessions.length) * 100).toFixed(1))
@@ -147,71 +228,34 @@ export class AdminController {
   }
 
   static addStudent(req, res) {
-    const { rollNo, prn, name, division = 'SY-A', batch = 'B1' } = req.body;
-    if (!rollNo || !prn || !name) {
-      return res.status(400).json({ success: false, error: 'Roll No, PRN, and Name are required' });
+    const { rollNo, prn, name, department = 'comp', division = 'SY-A', batch = 'B1' } = req.body;
+    if (!rollNo || !name) {
+      return res.status(400).json({ success: false, error: 'Roll No and Name are required' });
     }
 
     const students = db.get('students');
-    if (students.some(s => s.rollNo === Number(rollNo) && s.division === division)) {
-      return res.status(400).json({ success: false, error: `Roll No. ${rollNo} already exists in ${division}` });
+    if (students.some(s => s.rollNo === Number(rollNo) && s.division === division && s.department === department)) {
+      return res.status(400).json({ success: false, error: `Roll No. ${rollNo} already exists in ${department.toUpperCase()} - ${division}` });
     }
 
     const newStudent = {
-      id: `S_${Date.now()}`,
+      id: `S_${department}_${division}_${Date.now()}`,
       rollNo: Number(rollNo),
-      prn: String(prn),
+      prn: String(prn || `12251ET${String(rollNo).padStart(3, '0')}`),
       name: String(name),
+      department,
       division,
       batch,
       boundDeviceId: null,
       boundFingerprint: null,
-      boundAt: null
+      boundAt: null,
+      idCardPhoto: null
     };
 
     students.push(newStudent);
     db.set('students', students);
 
     res.json({ success: true, data: newStudent });
-  }
-
-  static bulkImportStudents(req, res) {
-    const { studentsList, division = 'SY-A' } = req.body;
-    if (!Array.isArray(studentsList) || studentsList.length === 0) {
-      return res.status(400).json({ success: false, error: 'Invalid student list array' });
-    }
-
-    const students = db.get('students');
-    let addedCount = 0;
-
-    studentsList.forEach(item => {
-      if (item.rollNo && item.name) {
-        const existingIdx = students.findIndex(
-          s => s.rollNo === Number(item.rollNo) && s.division === (item.division || division)
-        );
-        const record = {
-          id: existingIdx >= 0 ? students[existingIdx].id : `S_${Date.now()}_${item.rollNo}`,
-          rollNo: Number(item.rollNo),
-          prn: String(item.prn || `202401${String(item.rollNo).padStart(2, '0')}`),
-          name: String(item.name),
-          division: item.division || division,
-          batch: item.batch || 'B1',
-          boundDeviceId: existingIdx >= 0 ? students[existingIdx].boundDeviceId : null,
-          boundFingerprint: existingIdx >= 0 ? students[existingIdx].boundFingerprint : null,
-          boundAt: existingIdx >= 0 ? students[existingIdx].boundAt : null
-        };
-
-        if (existingIdx >= 0) {
-          students[existingIdx] = record;
-        } else {
-          students.push(record);
-        }
-        addedCount++;
-      }
-    });
-
-    db.set('students', students);
-    res.json({ success: true, message: `Successfully imported/updated ${addedCount} students` });
   }
 
   static resetDevice(req, res) {

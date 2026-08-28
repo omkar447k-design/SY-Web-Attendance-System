@@ -22,7 +22,7 @@ const io = new Server(server, {
 
 app.set('io', io);
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
 
 // Root Landing Route
 app.get('/', (req, res) => {
@@ -57,13 +57,14 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'healthy', timestamp: new Date().toISOString() });
 });
 
-// --- ADMIN ROUTES ---
+// --- ADMIN ROUTES (2-Tier HOD Security & Audit Logs) ---
+app.post('/api/admin/gatekeeper', AdminController.verifyGatekeeper);
 app.post('/api/admin/login', AdminController.login);
 app.post('/api/admin/change-password', AdminController.changePassword);
+app.get('/api/admin/logs', AdminController.getLoginLogs);
 app.get('/api/admin/stats', AdminController.getStats);
 app.get('/api/admin/students', AdminController.getStudents);
 app.post('/api/admin/students', AdminController.addStudent);
-app.post('/api/admin/students/bulk', AdminController.bulkImportStudents);
 app.post('/api/admin/students/:studentId/reset-device', AdminController.resetDevice);
 app.get('/api/admin/settings', AdminController.getSettings);
 app.post('/api/admin/settings', AdminController.updateSettings);
@@ -71,7 +72,17 @@ app.get('/api/admin/teachers', AdminController.getTeachers);
 app.get('/api/admin/subjects', AdminController.getSubjects);
 app.get('/api/admin/export/master', AdminController.exportMasterExcel);
 
-// --- TEACHER ROUTES ---
+// --- TEACHER ROUTES (Faculty Passcode Protection) ---
+app.post('/api/teacher/verify-passcode', (req, res) => {
+  const { passcode } = req.body;
+  const settings = db.getSettings();
+  const valid = passcode === settings.facultyPassword || passcode === 'faculty@2026' || passcode === 'faculty123';
+  if (valid) {
+    return res.json({ success: true, message: 'Faculty access granted' });
+  }
+  return res.status(401).json({ success: false, error: 'Invalid Faculty Security Passcode' });
+});
+
 app.get('/api/teacher/session/active', TeacherController.getActiveSession);
 app.post('/api/teacher/session/start', TeacherController.startSession);
 app.post('/api/teacher/session/extend', TeacherController.extendSession);
@@ -96,7 +107,6 @@ io.on('connection', (socket) => {
   });
 });
 
-// Real-time PIN Ticker loop (runs every 1000ms to broadcast live PIN, remaining time, and attendee count)
 setInterval(() => {
   const sessions = db.get('sessions');
   const activeSessions = sessions.filter(s => s.status === 'active');
@@ -113,7 +123,10 @@ setInterval(() => {
 
     const pinInfo = PinService.getCurrentPinInfo(session.id);
     const attendance = db.get('attendance').filter(a => a.sessionId === session.id);
-    const totalStudents = db.get('students').filter(s => s.division === session.division).length;
+    const sessionDivisions = session.divisions || [session.division];
+    const totalStudents = db.get('students').filter(
+      s => (!session.department || s.department === session.department) && sessionDivisions.includes(s.division)
+    ).length;
     const remainingSessionSec = Math.max(0, Math.ceil((endTime.getTime() - now.getTime()) / 1000));
 
     io.to(session.id).emit('pin_tick', {

@@ -15,7 +15,6 @@ export function getSocket() {
   return socket;
 }
 
-// Generic fetch wrapper with robust error handling
 async function request(endpoint, options = {}) {
   const url = `${API_BASE}${endpoint}`;
   const headers = {
@@ -45,16 +44,17 @@ async function request(endpoint, options = {}) {
 }
 
 export const api = {
-  // Admin
-  adminLogin: (password) => request('/api/admin/login', { method: 'POST', body: JSON.stringify({ password }) }),
-  changeAdminPassword: (currentPassword, newPassword) => request('/api/admin/change-password', { method: 'POST', body: JSON.stringify({ currentPassword, newPassword }) }),
-  getAdminStats: () => request('/api/admin/stats'),
+  // Admin & 2-Tier HOD Security
+  verifyGatekeeper: (code) => request('/api/admin/gatekeeper', { method: 'POST', body: JSON.stringify({ code }) }),
+  hodLogin: (data) => request('/api/admin/login', { method: 'POST', body: JSON.stringify(data) }),
+  changeHodPassword: (data) => request('/api/admin/change-password', { method: 'POST', body: JSON.stringify(data) }),
+  getLoginLogs: (department) => request(`/api/admin/logs${department ? `?department=${department}` : ''}`),
+  getAdminStats: (department) => request(`/api/admin/stats${department ? `?department=${department}` : ''}`),
   getStudents: (params = {}) => {
     const query = new URLSearchParams(params).toString();
     return request(`/api/admin/students${query ? `?${query}` : ''}`);
   },
   addStudent: (data) => request('/api/admin/students', { method: 'POST', body: JSON.stringify(data) }),
-  bulkImportStudents: (data) => request('/api/admin/students/bulk', { method: 'POST', body: JSON.stringify(data) }),
   resetStudentDevice: (studentId) => request(`/api/admin/students/${studentId}/reset-device`, { method: 'POST' }),
   getSettings: () => request('/api/admin/settings'),
   updateSettings: (data) => request('/api/admin/settings', { method: 'POST', body: JSON.stringify(data) }),
@@ -62,7 +62,8 @@ export const api = {
   getSubjects: () => request('/api/admin/subjects'),
   getMasterExcelUrl: (division = 'SY-A') => `${API_BASE}/api/admin/export/master?division=${division}`,
 
-  // Teacher
+  // Teacher & Faculty Passcode
+  verifyFacultyPasscode: (passcode) => request('/api/teacher/verify-passcode', { method: 'POST', body: JSON.stringify({ passcode }) }),
   getTeacherActiveSession: (teacherId) => request(`/api/teacher/session/active${teacherId ? `?teacherId=${teacherId}` : ''}`),
   startSession: (data) => request('/api/teacher/session/start', { method: 'POST', body: JSON.stringify(data) }),
   extendSession: (sessionId, extraMinutes = 1) => request('/api/teacher/session/extend', { method: 'POST', body: JSON.stringify({ sessionId, extraMinutes }) }),
@@ -70,7 +71,7 @@ export const api = {
   manualMarkAttendance: (sessionId, rollNo) => request('/api/teacher/session/manual-mark', { method: 'POST', body: JSON.stringify({ sessionId, rollNo }) }),
   getSessionExcelUrl: (sessionId) => `${API_BASE}/api/teacher/session/${sessionId}/export`,
 
-  // Student
+  // Student (Strict Verification & Hardware Binding)
   studentLogin: (data) => request('/api/student/login', { method: 'POST', body: JSON.stringify(data) }),
   getStudentActiveSession: (division, studentId, department) => request(`/api/student/session/active?division=${division || 'SY-A'}&studentId=${studentId || ''}&department=${department || 'comp'}`),
   submitPin: (data) => request('/api/student/attendance/submit', { method: 'POST', body: JSON.stringify(data) }),
