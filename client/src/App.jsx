@@ -7,11 +7,10 @@ import { AdminPortal } from './pages/AdminPortal';
 import { getDeviceIdentity } from './services/fingerprint';
 
 export function App() {
-  const [role, setRole] = useState(null); // 'student' | 'teacher' | 'admin' | null
+  const [role, setRole] = useState(null);
   const [user, setUser] = useState(null);
   const [device, setDevice] = useState(null);
 
-  // Restore session from localStorage if present
   useEffect(() => {
     async function initSession() {
       const savedRole = localStorage.getItem('sy_auth_role');
@@ -46,7 +45,7 @@ export function App() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-100 flex flex-col selection:bg-brand-500 selection:text-white">
+    <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-['Plus_Jakarta_Sans',sans-serif]">
       <Navbar role={role} user={user} onLogout={handleLogout} />
 
       <main className="flex-1">
@@ -65,9 +64,9 @@ export function App() {
         )}
       </main>
 
-      {/* Department Footer */}
-      <footer className="border-t border-slate-800/80 py-4 text-center text-xs text-slate-500 bg-slate-950/40">
-        <p>SY Attendance System • Dept. of Computer Engineering • PWA 2026</p>
+      {/* Clean White Academic Footer */}
+      <footer className="border-t border-slate-200 py-4 text-center text-xs text-slate-500 bg-white">
+        <p>Engineering Multi-Department Attendance System • SY 2025-2026</p>
       </footer>
     </div>
   );

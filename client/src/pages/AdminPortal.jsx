@@ -1,15 +1,25 @@
 import React, { useState, useEffect } from 'react';
-import { Shield, Users, FileSpreadsheet, Settings, AlertTriangle, Download, RefreshCw, UserPlus, Unlock, Check, Search, BookOpen, Key } from 'lucide-react';
+import { Shield, Users, Settings, AlertTriangle, Download, RefreshCw, UserPlus, Unlock, Search, BookOpen, Key, Building2 } from 'lucide-react';
 import { api } from '../services/api';
 
+const DEPARTMENTS = [
+  { id: 'comp', name: 'Computer Science & Engineering', code: 'CSE' },
+  { id: 'it', name: 'Information Technology', code: 'IT' },
+  { id: 'aids', name: 'Artificial Intelligence & Data Science', code: 'AI&DS' },
+  { id: 'entc', name: 'Electronics & Telecommunication', code: 'ENTC' },
+  { id: 'elec', name: 'Electrical Engineering', code: 'ELEC' },
+  { id: 'instru', name: 'Instrumentation Engineering', code: 'INSTRU' }
+];
+
 export function AdminPortal() {
-  const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'defaulters' | 'roster' | 'settings'
+  const [activeTab, setActiveTab] = useState('overview');
   const [stats, setStats] = useState(null);
   const [students, setStudents] = useState([]);
   const [teachers, setTeachers] = useState([]);
   const [subjects, setSubjects] = useState([]);
   const [settings, setSettings] = useState({});
   const [searchQuery, setSearchQuery] = useState('');
+  const [departmentFilter, setDepartmentFilter] = useState('comp');
   const [divisionFilter, setDivisionFilter] = useState('SY-A');
   const [loading, setLoading] = useState(true);
 
@@ -18,6 +28,7 @@ export function AdminPortal() {
   const [newRollNo, setNewRollNo] = useState('');
   const [newPrn, setNewPrn] = useState('');
   const [newName, setNewName] = useState('');
+  const [newDept, setNewDept] = useState('comp');
   const [newDivision, setNewDivision] = useState('SY-A');
   const [newBatch, setNewBatch] = useState('B1');
 
@@ -27,7 +38,6 @@ export function AdminPortal() {
   const [passMsg, setPassMsg] = useState('');
   const [passError, setPassError] = useState('');
 
-  // Load Admin Data
   const loadData = async () => {
     setLoading(true);
     try {
@@ -53,9 +63,8 @@ export function AdminPortal() {
 
   useEffect(() => {
     loadData();
-  }, [divisionFilter]);
+  }, [divisionFilter, departmentFilter]);
 
-  // Reset Student Device Binding
   const handleResetDevice = async (studentId, name) => {
     if (!window.confirm(`Are you sure you want to reset the device binding for ${name}?`)) return;
     try {
@@ -69,7 +78,6 @@ export function AdminPortal() {
     }
   };
 
-  // Add Single Student
   const handleAddStudent = async (e) => {
     e.preventDefault();
     try {
@@ -77,6 +85,7 @@ export function AdminPortal() {
         rollNo: Number(newRollNo),
         prn: newPrn,
         name: newName,
+        department: newDept,
         division: newDivision,
         batch: newBatch
       });
@@ -93,7 +102,6 @@ export function AdminPortal() {
     }
   };
 
-  // Update Settings
   const handleUpdateSettings = async (e) => {
     e.preventDefault();
     try {
@@ -107,7 +115,6 @@ export function AdminPortal() {
     }
   };
 
-  // Change Admin Password
   const handleChangePassword = async (e) => {
     e.preventDefault();
     setPassMsg('');
@@ -126,30 +133,32 @@ export function AdminPortal() {
 
   const filteredStudents = students.filter(s => {
     const q = searchQuery.toLowerCase();
-    return s.name.toLowerCase().includes(q) || String(s.rollNo).includes(q) || s.prn.includes(q);
+    const matchesSearch = s.name.toLowerCase().includes(q) || String(s.rollNo).includes(q) || s.prn?.includes(q);
+    const matchesDept = !s.department || s.department === departmentFilter;
+    return matchesSearch && matchesDept;
   });
 
-  const defaulters = students.filter(s => s.isDefaulter);
+  const defaulters = students.filter(s => s.isDefaulter && (!s.department || s.department === departmentFilter));
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-6">
       
       {/* Header Bar */}
-      <div className="bg-slate-800/80 border border-slate-700/80 rounded-3xl p-5 sm:p-6 shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+      <div className="bg-white border border-slate-200 rounded-3xl p-5 sm:p-6 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center space-x-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
-            <span className="text-xs font-bold uppercase tracking-wider text-brand-400">HOD & Department Admin Portal</span>
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+            <span className="text-xs font-bold uppercase tracking-wider text-indigo-600">HOD & Department Admin Portal</span>
           </div>
-          <h1 className="text-xl sm:text-2xl font-extrabold text-white">Department Administration & Compliance</h1>
-          <p className="text-xs text-slate-400 mt-0.5">SY Computer Engineering • Academic Year 2025-2026</p>
+          <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900">Department Administration & Compliance</h1>
+          <p className="text-xs text-slate-500 mt-0.5 font-medium">Engineering College • Academic Year 2025-2026</p>
         </div>
 
         <div className="flex items-center space-x-2">
           <a
             href={api.getMasterExcelUrl(divisionFilter)}
             download
-            className="flex items-center space-x-1.5 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-lg shadow-emerald-600/30 transition"
+            className="flex items-center space-x-1.5 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-md shadow-emerald-100 transition"
           >
             <Download className="w-4 h-4" />
             <span>Master Excel ({divisionFilter})</span>
@@ -157,7 +166,7 @@ export function AdminPortal() {
 
           <button
             onClick={loadData}
-            className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition"
+            className="p-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 transition"
             title="Refresh Data"
           >
             <RefreshCw className="w-4 h-4" />
@@ -166,11 +175,11 @@ export function AdminPortal() {
       </div>
 
       {/* Tabs */}
-      <div className="flex space-x-2 border-b border-slate-800 pb-2 overflow-x-auto">
+      <div className="flex space-x-2 border-b border-slate-200 pb-2 overflow-x-auto">
         {[
           { id: 'overview', label: '📊 Overview & Stats', icon: Shield },
           { id: 'defaulters', label: `⚠️ Defaulter List (${defaulters.length})`, icon: AlertTriangle },
-          { id: 'roster', label: `👥 Student Roster (${students.length})`, icon: Users },
+          { id: 'roster', label: `👥 Student Roster (${filteredStudents.length})`, icon: Users },
           { id: 'settings', label: '⚙️ Department Policies', icon: Settings }
         ].map(tab => (
           <button
@@ -178,8 +187,8 @@ export function AdminPortal() {
             onClick={() => setActiveTab(tab.id)}
             className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition flex items-center space-x-2 whitespace-nowrap ${
               activeTab === tab.id
-                ? 'bg-brand-600 text-white shadow-md shadow-brand-600/20'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                ? 'bg-indigo-600 text-white shadow-md shadow-indigo-100'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
             }`}
           >
             <span>{tab.label}</span>
@@ -191,46 +200,47 @@ export function AdminPortal() {
       {activeTab === 'overview' && (
         <div className="space-y-6">
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="bg-slate-800/80 border border-slate-700/80 rounded-2xl p-5 shadow-lg">
-              <span className="text-xs font-bold text-slate-400 uppercase">Total Students</span>
-              <div className="text-3xl font-black text-white mt-1">{stats?.totalStudents || 0}</div>
-              <p className="text-[11px] text-slate-500 mt-1">Enrolled across SY-A & SY-B</p>
+            <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
+              <span className="text-xs font-bold text-slate-500 uppercase">Total Students</span>
+              <div className="text-3xl font-black text-slate-900 mt-1">{stats?.totalStudents || 0}</div>
+              <p className="text-[11px] text-slate-400 mt-1 font-medium">Enrolled across all departments</p>
             </div>
 
-            <div className="bg-slate-800/80 border border-slate-700/80 rounded-2xl p-5 shadow-lg">
-              <span className="text-xs font-bold text-slate-400 uppercase">Total Faculty</span>
-              <div className="text-3xl font-black text-white mt-1">{stats?.totalTeachers || 0}</div>
-              <p className="text-[11px] text-slate-500 mt-1">Active Department Teachers</p>
+            <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
+              <span className="text-xs font-bold text-slate-500 uppercase">Total Faculty</span>
+              <div className="text-3xl font-black text-slate-900 mt-1">{stats?.totalTeachers || 0}</div>
+              <p className="text-[11px] text-slate-400 mt-1 font-medium">6 Engineering Departments</p>
             </div>
 
-            <div className="bg-slate-800/80 border border-slate-700/80 rounded-2xl p-5 shadow-lg">
-              <span className="text-xs font-bold text-brand-400 uppercase">Lectures Conducted</span>
-              <div className="text-3xl font-black text-brand-400 mt-1">{stats?.totalSessions || 0}</div>
-              <p className="text-[11px] text-slate-500 mt-1">Total attendance sessions</p>
+            <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
+              <span className="text-xs font-bold text-indigo-600 uppercase">Lectures Conducted</span>
+              <div className="text-3xl font-black text-indigo-600 mt-1">{stats?.totalSessions || 0}</div>
+              <p className="text-[11px] text-slate-400 mt-1 font-medium">Total active sessions</p>
             </div>
 
-            <div className="bg-slate-800/80 border border-slate-700/80 rounded-2xl p-5 shadow-lg">
-              <span className="text-xs font-bold text-amber-400 uppercase">Defaulter Students</span>
-              <div className="text-3xl font-black text-amber-400 mt-1">{stats?.defaulterCount || 0}</div>
-              <p className="text-[11px] text-slate-500 mt-1">{stats?.defaulterPercentage}% below 75% threshold</p>
+            <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
+              <span className="text-xs font-bold text-amber-600 uppercase">Defaulter Students</span>
+              <div className="text-3xl font-black text-amber-600 mt-1">{defaulters.length}</div>
+              <p className="text-[11px] text-slate-400 mt-1 font-medium">Below 75% threshold</p>
             </div>
           </div>
 
           {/* Department Subjects Matrix */}
-          <div className="bg-slate-800/80 border border-slate-700/80 rounded-3xl p-6 shadow-xl">
-            <h3 className="text-base font-extrabold text-white mb-4 flex items-center space-x-2">
-              <BookOpen className="w-4 h-4 text-brand-400" />
-              <span>Department Subject & Faculty Mapping</span>
+          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm">
+            <h3 className="text-base font-extrabold text-slate-900 mb-4 flex items-center space-x-2">
+              <BookOpen className="w-4 h-4 text-indigo-600" />
+              <span>Multi-Department Subject & Faculty Mapping</span>
             </h3>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
               {subjects.map(s => {
                 const teach = teachers.find(t => t.id === s.teacherId);
+                const dept = DEPARTMENTS.find(d => d.id === s.department);
                 return (
-                  <div key={s.id} className="p-4 rounded-2xl bg-slate-900 border border-slate-700/70">
-                    <span className="text-[10px] uppercase font-bold text-brand-400">{s.code} • {s.division} ({s.type})</span>
-                    <h4 className="font-bold text-white text-sm mt-0.5">{s.name}</h4>
-                    <p className="text-xs text-slate-400 mt-2 flex items-center space-x-1">
+                  <div key={s.id} className="p-4 rounded-2xl bg-slate-50 border border-slate-200">
+                    <span className="text-[10px] uppercase font-bold text-indigo-600">{dept?.code || 'ENG'} • {s.code} • {s.division}</span>
+                    <h4 className="font-bold text-slate-900 text-sm mt-0.5">{s.name}</h4>
+                    <p className="text-xs text-slate-500 mt-2 flex items-center space-x-1 font-medium">
                       <span>👨‍🏫</span>
                       <span>{teach ? teach.name : 'Unassigned'}</span>
                     </p>
@@ -244,29 +254,32 @@ export function AdminPortal() {
 
       {/* TAB 2: DEFAULTERS LIST (< 75%) */}
       {activeTab === 'defaulters' && (
-        <div className="bg-slate-800/80 border border-slate-700/80 rounded-3xl p-6 shadow-xl space-y-4">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-3 border-b border-slate-700/80">
+        <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-3 border-b border-slate-200">
             <div>
-              <h3 className="text-base font-extrabold text-white flex items-center space-x-2">
-                <AlertTriangle className="w-5 h-5 text-amber-400" />
+              <h3 className="text-base font-extrabold text-slate-900 flex items-center space-x-2">
+                <AlertTriangle className="w-5 h-5 text-amber-500" />
                 <span>Monthly Defaulter List (Attendance &lt; 75%)</span>
               </h3>
-              <p className="text-xs text-slate-400 mt-0.5">Students below mandatory 75% attendance criteria</p>
+              <p className="text-xs text-slate-500 mt-0.5">Students below mandatory 75% attendance</p>
             </div>
 
-            <a
-              href={api.getMasterExcelUrl(divisionFilter)}
-              download
-              className="flex items-center space-x-1 px-3 py-2 rounded-xl bg-amber-500/20 text-amber-300 border border-amber-500/30 text-xs font-bold hover:bg-amber-500/30 transition"
-            >
-              <Download className="w-3.5 h-3.5" />
-              <span>Export Defaulter Report</span>
-            </a>
+            <div className="flex items-center space-x-2">
+              <select
+                value={departmentFilter}
+                onChange={(e) => setDepartmentFilter(e.target.value)}
+                className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none"
+              >
+                {DEPARTMENTS.map(d => (
+                  <option key={d.id} value={d.id}>{d.name}</option>
+                ))}
+              </select>
+            </div>
           </div>
 
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs sm:text-sm">
-              <thead className="text-slate-400 uppercase bg-slate-900/60 border-b border-slate-700">
+              <thead className="text-slate-500 uppercase bg-slate-50 border-b border-slate-200">
                 <tr>
                   <th className="py-3 px-3">Roll No</th>
                   <th className="py-3 px-3">PRN</th>
@@ -278,18 +291,18 @@ export function AdminPortal() {
                   <th className="py-3 px-3">Status</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-700/60 text-slate-200">
+              <tbody className="divide-y divide-slate-100 text-slate-700">
                 {defaulters.map(student => (
-                  <tr key={student.id} className="hover:bg-slate-700/30 transition">
-                    <td className="py-3 px-3 font-extrabold text-white">#{student.rollNo}</td>
-                    <td className="py-3 px-3 text-slate-400">{student.prn}</td>
-                    <td className="py-3 px-3 font-bold text-white">{student.name}</td>
+                  <tr key={student.id} className="hover:bg-slate-50 transition">
+                    <td className="py-3 px-3 font-extrabold text-slate-900">#{student.rollNo}</td>
+                    <td className="py-3 px-3 text-slate-500">{student.prn}</td>
+                    <td className="py-3 px-3 font-bold text-slate-900">{student.name}</td>
                     <td className="py-3 px-3">{student.division}</td>
                     <td className="py-3 px-3">{student.batch}</td>
                     <td className="py-3 px-3">{student.attendedLectures} / {student.totalLectures}</td>
-                    <td className="py-3 px-3 font-extrabold text-rose-400">{student.attendancePercentage}%</td>
+                    <td className="py-3 px-3 font-extrabold text-rose-600">{student.attendancePercentage}%</td>
                     <td className="py-3 px-3">
-                      <span className="px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 font-bold text-[11px] border border-rose-500/30">
+                      <span className="px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 font-bold text-[11px] border border-rose-200">
                         ⚠️ Defaulter
                       </span>
                     </td>
@@ -303,16 +316,27 @@ export function AdminPortal() {
 
       {/* TAB 3: STUDENT ROSTER & DEVICE RESET */}
       {activeTab === 'roster' && (
-        <div className="bg-slate-800/80 border border-slate-700/80 rounded-3xl p-6 shadow-xl space-y-4">
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pb-3 border-b border-slate-700/80">
+        <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pb-3 border-b border-slate-200">
             <div className="flex items-center space-x-3">
+              <select
+                value={departmentFilter}
+                onChange={(e) => setDepartmentFilter(e.target.value)}
+                className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none"
+              >
+                {DEPARTMENTS.map(d => (
+                  <option key={d.id} value={d.id}>{d.name}</option>
+                ))}
+              </select>
+
               <select
                 value={divisionFilter}
                 onChange={(e) => setDivisionFilter(e.target.value)}
-                className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs font-bold text-white focus:border-brand-500 outline-none"
+                className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none"
               >
-                <option value="SY-A">Division SY-A</option>
-                <option value="SY-B">Division SY-B</option>
+                <option value="SY-A">SY-A</option>
+                <option value="SY-B">SY-B</option>
+                <option value="SY-C">SY-C</option>
               </select>
 
               <div className="relative">
@@ -322,14 +346,14 @@ export function AdminPortal() {
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Search name / roll..."
-                  className="bg-slate-900 border border-slate-700 rounded-xl pl-8 pr-3 py-2 text-xs text-white placeholder-slate-500 outline-none focus:border-brand-500"
+                  className="bg-slate-50 border border-slate-300 rounded-xl pl-8 pr-3 py-2 text-xs text-slate-800 placeholder-slate-400 outline-none focus:border-indigo-600"
                 />
               </div>
             </div>
 
             <button
               onClick={() => setShowAddModal(true)}
-              className="flex items-center justify-center space-x-1.5 px-4 py-2 rounded-xl bg-brand-600 hover:bg-brand-500 text-white text-xs font-bold shadow-md shadow-brand-600/30 transition"
+              className="flex items-center justify-center space-x-1.5 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md shadow-indigo-100 transition"
             >
               <UserPlus className="w-3.5 h-3.5" />
               <span>Add Student</span>
@@ -339,7 +363,7 @@ export function AdminPortal() {
           {/* Roster Table */}
           <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
             <table className="w-full text-left text-xs sm:text-sm">
-              <thead className="text-slate-400 uppercase bg-slate-900/80 sticky top-0 border-b border-slate-700">
+              <thead className="text-slate-500 uppercase bg-slate-50 sticky top-0 border-b border-slate-200">
                 <tr>
                   <th className="py-3 px-3">Roll No</th>
                   <th className="py-3 px-3">PRN</th>
@@ -350,25 +374,25 @@ export function AdminPortal() {
                   <th className="py-3 px-3 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-700/60 text-slate-200">
+              <tbody className="divide-y divide-slate-100 text-slate-700">
                 {filteredStudents.map(student => (
-                  <tr key={student.id} className="hover:bg-slate-700/30 transition">
-                    <td className="py-3 px-3 font-extrabold text-white">#{student.rollNo}</td>
-                    <td className="py-3 px-3 text-slate-400">{student.prn}</td>
-                    <td className="py-3 px-3 font-bold text-white">{student.name}</td>
+                  <tr key={student.id} className="hover:bg-slate-50 transition">
+                    <td className="py-3 px-3 font-extrabold text-slate-900">#{student.rollNo}</td>
+                    <td className="py-3 px-3 text-slate-500">{student.prn}</td>
+                    <td className="py-3 px-3 font-bold text-slate-900">{student.name}</td>
                     <td className="py-3 px-3">{student.batch}</td>
                     <td className="py-3 px-3 font-bold">
-                      <span className={student.isDefaulter ? 'text-rose-400' : 'text-emerald-400'}>
+                      <span className={student.isDefaulter ? 'text-rose-600' : 'text-emerald-600'}>
                         {student.attendancePercentage}%
                       </span>
                     </td>
                     <td className="py-3 px-3">
                       {student.boundDeviceId ? (
-                        <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-semibold text-[11px] border border-emerald-500/30">
+                        <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-semibold text-[11px] border border-emerald-200">
                           🔒 Bound
                         </span>
                       ) : (
-                        <span className="px-2 py-0.5 rounded-full bg-slate-700 text-slate-400 font-semibold text-[11px]">
+                        <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 font-semibold text-[11px]">
                           Unbound
                         </span>
                       )}
@@ -377,7 +401,7 @@ export function AdminPortal() {
                       {student.boundDeviceId && (
                         <button
                           onClick={() => handleResetDevice(student.id, student.name)}
-                          className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-rose-500/20 hover:text-rose-300 text-slate-400 border border-slate-700 text-[11px] font-bold transition"
+                          className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-rose-50 hover:text-rose-600 text-slate-600 border border-slate-200 text-[11px] font-bold transition"
                           title="Reset Device if student lost phone"
                         >
                           <Unlock className="w-3 h-3 inline mr-1" />
@@ -397,73 +421,45 @@ export function AdminPortal() {
       {activeTab === 'settings' && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           
-          {/* Department Timing Rules */}
-          <div className="bg-slate-800/80 border border-slate-700/80 rounded-3xl p-6 shadow-xl">
-            <h3 className="text-base font-extrabold text-white mb-4 flex items-center space-x-2">
-              <Settings className="w-4 h-4 text-brand-400" />
+          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm">
+            <h3 className="text-base font-extrabold text-slate-900 mb-4 flex items-center space-x-2">
+              <Settings className="w-4 h-4 text-indigo-600" />
               <span>Department Attendance Timing</span>
             </h3>
 
             <form onSubmit={handleUpdateSettings} className="space-y-4">
               <div>
-                <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
-                  Department Name
-                </label>
-                <input
-                  type="text"
-                  value={settings.departmentName || ''}
-                  onChange={(e) => setSettings({ ...settings, departmentName: e.target.value })}
-                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white focus:border-brand-500 outline-none"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
-                    Default Duration (Mins)
-                  </label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="15"
-                    value={settings.defaultDurationMinutes || 3}
-                    onChange={(e) => setSettings({ ...settings, defaultDurationMinutes: Number(e.target.value) })}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white focus:border-brand-500 outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
-                    Max Allowed Cap (Mins)
-                  </label>
-                  <input
-                    type="number"
-                    min="3"
-                    max="30"
-                    value={settings.maxDurationMinutes || 10}
-                    onChange={(e) => setSettings({ ...settings, maxDurationMinutes: Number(e.target.value) })}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white focus:border-brand-500 outline-none"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
-                  PIN Rotation Interval (Seconds)
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                  Default Duration (Mins)
                 </label>
                 <input
                   type="number"
-                  disabled
-                  value={10}
-                  className="w-full bg-slate-900/50 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-slate-400 outline-none cursor-not-allowed"
+                  min="1"
+                  max="15"
+                  value={settings.defaultDurationMinutes || 3}
+                  onChange={(e) => setSettings({ ...settings, defaultDurationMinutes: Number(e.target.value) })}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 focus:border-indigo-600 outline-none"
                 />
-                <p className="text-[11px] text-slate-500 mt-1">Locked at 10 seconds for optimum classroom anti-proxy security.</p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                  Max Allowed Cap (Mins)
+                </label>
+                <input
+                  type="number"
+                  min="3"
+                  max="30"
+                  value={settings.maxDurationMinutes || 10}
+                  onChange={(e) => setSettings({ ...settings, maxDurationMinutes: Number(e.target.value) })}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 focus:border-indigo-600 outline-none"
+                />
               </div>
 
               <div className="pt-2">
                 <button
                   type="submit"
-                  className="w-full py-3 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-bold text-sm shadow-lg shadow-brand-600/30 transition active:scale-[0.98]"
+                  className="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm shadow-md shadow-indigo-100 transition active:scale-[0.98]"
                 >
                   Save Timing Settings
                 </button>
@@ -471,29 +467,28 @@ export function AdminPortal() {
             </form>
           </div>
 
-          {/* Change Admin Password */}
-          <div className="bg-slate-800/80 border border-slate-700/80 rounded-3xl p-6 shadow-xl flex flex-col justify-between">
+          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm flex flex-col justify-between">
             <div>
-              <h3 className="text-base font-extrabold text-white mb-4 flex items-center space-x-2">
-                <Key className="w-4 h-4 text-brand-400" />
+              <h3 className="text-base font-extrabold text-slate-900 mb-4 flex items-center space-x-2">
+                <Key className="w-4 h-4 text-indigo-600" />
                 <span>Change Admin Password</span>
               </h3>
 
               {passMsg && (
-                <div className="mb-4 p-3 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs">
+                <div className="mb-4 p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs">
                   {passMsg}
                 </div>
               )}
 
               {passError && (
-                <div className="mb-4 p-3 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs">
+                <div className="mb-4 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs">
                   ⚠️ {passError}
                 </div>
               )}
 
               <form onSubmit={handleChangePassword} className="space-y-4">
                 <div>
-                  <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
                     Current Password
                   </label>
                   <input
@@ -501,13 +496,13 @@ export function AdminPortal() {
                     value={currentPass}
                     onChange={(e) => setCurrentPass(e.target.value)}
                     placeholder="Enter current password"
-                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white focus:border-brand-500 outline-none"
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 focus:border-indigo-600 outline-none"
                     required
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
                     New Secret Password
                   </label>
                   <input
@@ -515,7 +510,7 @@ export function AdminPortal() {
                     value={newPass}
                     onChange={(e) => setNewPass(e.target.value)}
                     placeholder="Min. 6 characters"
-                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white focus:border-brand-500 outline-none"
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 focus:border-indigo-600 outline-none"
                     required
                   />
                 </div>
@@ -523,17 +518,13 @@ export function AdminPortal() {
                 <div className="pt-2">
                   <button
                     type="submit"
-                    className="w-full py-3 rounded-xl bg-slate-700 hover:bg-slate-600 text-white font-bold text-sm border border-slate-600 transition active:scale-[0.98]"
+                    className="w-full py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-sm transition active:scale-[0.98]"
                   >
                     Update Secret Password
                   </button>
                 </div>
               </form>
             </div>
-
-            <p className="text-[11px] text-slate-500 mt-4">
-              🔒 Keep this password private to HOD and Academic Coordinators.
-            </p>
           </div>
 
         </div>
@@ -541,65 +532,79 @@ export function AdminPortal() {
 
       {/* ADD STUDENT MODAL */}
       {showAddModal && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-800 border border-slate-700 rounded-3xl p-6 max-w-md w-full shadow-2xl">
-            <h3 className="text-lg font-extrabold text-white mb-4">Add Student to Roster</h3>
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 rounded-3xl p-6 max-w-md w-full shadow-2xl">
+            <h3 className="text-lg font-extrabold text-slate-900 mb-4">Add Student to Roster</h3>
             <form onSubmit={handleAddStudent} className="space-y-3">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Department</label>
+                <select
+                  value={newDept}
+                  onChange={(e) => setNewDept(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 outline-none focus:border-indigo-600"
+                >
+                  {DEPARTMENTS.map(d => (
+                    <option key={d.id} value={d.id}>{d.name}</option>
+                  ))}
+                </select>
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-300 uppercase mb-1">Roll No</label>
+                  <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Roll No</label>
                   <input
                     type="number"
                     value={newRollNo}
                     onChange={(e) => setNewRollNo(e.target.value)}
                     placeholder="e.g. 31"
-                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-brand-500"
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 outline-none focus:border-indigo-600"
                     required
                   />
                 </div>
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-300 uppercase mb-1">PRN</label>
+                  <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">PRN</label>
                   <input
                     type="text"
                     value={newPrn}
                     onChange={(e) => setNewPrn(e.target.value)}
-                    placeholder="20240131"
-                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-brand-500"
+                    placeholder="12251ET031"
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 outline-none focus:border-indigo-600"
                     required
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-[11px] font-bold text-slate-300 uppercase mb-1">Student Full Name</label>
+                <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Student Full Name</label>
                 <input
                   type="text"
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
                   placeholder="e.g. Rahul Sharma"
-                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-brand-500"
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 outline-none focus:border-indigo-600"
                   required
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-300 uppercase mb-1">Division</label>
+                  <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Division</label>
                   <select
                     value={newDivision}
                     onChange={(e) => setNewDivision(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-brand-500"
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 outline-none focus:border-indigo-600"
                   >
                     <option value="SY-A">SY-A</option>
                     <option value="SY-B">SY-B</option>
+                    <option value="SY-C">SY-C</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-300 uppercase mb-1">Batch</label>
+                  <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Batch</label>
                   <select
                     value={newBatch}
                     onChange={(e) => setNewBatch(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-brand-500"
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 outline-none focus:border-indigo-600"
                   >
                     <option value="B1">B1</option>
                     <option value="B2">B2</option>
@@ -612,13 +617,13 @@ export function AdminPortal() {
                 <button
                   type="button"
                   onClick={() => setShowAddModal(false)}
-                  className="flex-1 py-2.5 rounded-xl bg-slate-700 hover:bg-slate-600 text-slate-300 font-bold text-xs"
+                  className="flex-1 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-bold text-xs shadow-md shadow-brand-600/30"
+                  className="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md shadow-indigo-100"
                 >
                   Add Student
                 </button>

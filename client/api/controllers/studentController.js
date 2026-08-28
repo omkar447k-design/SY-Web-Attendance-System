@@ -4,18 +4,39 @@ import { DeviceService } from '../services/deviceService.js';
 
 export class StudentController {
   static login(req, res) {
-    const { rollNo, prn, division = 'SY-A', deviceId, fingerprint } = req.body;
+    const { rollNo, prn, department = 'comp', division = 'SY-A', deviceId, fingerprint } = req.body;
     if (!rollNo) {
       return res.status(400).json({ success: false, error: 'Roll Number is required' });
     }
 
     const students = db.get('students');
-    const student = students.find(
-      s => s.rollNo === Number(rollNo) && s.division === division && (!prn || s.prn === String(prn))
+    const numericRoll = Number(rollNo);
+    
+    // Find existing student or auto-register dynamically
+    let student = students.find(
+      s => s.rollNo === numericRoll && s.division === division && (s.department === department || !s.department)
     );
 
     if (!student) {
-      return res.status(404).json({ success: false, error: `Student with Roll No. ${rollNo} not found in ${division}` });
+      // Auto-register student dynamically for this department & division
+      const cleanPrn = prn && String(prn).trim() ? String(prn).trim() : `12251ET${String(numericRoll).padStart(3, '0')}`;
+      student = {
+        id: `S_${department}_${division}_${numericRoll}`,
+        rollNo: numericRoll,
+        prn: cleanPrn,
+        name: `Student #${numericRoll}`,
+        department,
+        division,
+        batch: numericRoll <= 20 ? 'B1' : numericRoll <= 40 ? 'B2' : 'B3',
+        boundDeviceId: null,
+        boundFingerprint: null,
+        boundAt: null
+      };
+      students.push(student);
+      db.set('students', students);
+    } else if (prn && String(prn).trim()) {
+      student.prn = String(prn).trim();
+      db.set('students', students);
     }
 
     const bindResult = DeviceService.verifyOrBindDevice(student.id, student.rollNo, deviceId, fingerprint);
@@ -25,15 +46,21 @@ export class StudentController {
 
     res.json({
       success: true,
-      student: bindResult.student,
+      student: {
+        ...bindResult.student,
+        department: student.department || department,
+        prn: student.prn
+      },
       token: `std_tok_${student.id}_${Date.now()}`
     });
   }
 
   static getActiveSession(req, res) {
-    const { division = 'SY-A', studentId } = req.query;
+    const { division = 'SY-A', department = 'comp', studentId } = req.query;
     const sessions = db.get('sessions');
-    const active = sessions.find(s => s.status === 'active' && s.division === division);
+    const active = sessions.find(
+      s => s.status === 'active' && s.division === division && (!s.department || s.department === department)
+    );
 
     if (!active) {
       return res.json({ success: true, hasActiveSession: false });
@@ -60,6 +87,7 @@ export class StudentController {
       session: {
         id: active.id,
         subjectName: active.subjectName,
+        department: active.department,
         division: active.division,
         batch: active.batch,
         remainingSec,
@@ -121,6 +149,7 @@ export class StudentController {
       studentId: student.id,
       rollNo: student.rollNo,
       studentName: student.name,
+      department: student.department || session.department,
       division: student.division,
       batch: student.batch,
       subjectId: session.subjectId,
@@ -156,7 +185,9 @@ export class StudentController {
 
     const sessions = db.get('sessions').filter(s => s.division === student.division);
     const attendance = db.get('attendance').filter(a => a.studentId === student.id);
-    const subjects = db.get('subjects').filter(s => s.division === student.division);
+    const subjects = db.get('subjects').filter(
+      s => s.division === student.division && (!s.department || s.department === student.department)
+    );
 
     const totalLectures = sessions.length;
     const attendedLectures = attendance.length;
@@ -207,6 +238,7 @@ export class StudentController {
           rollNo: student.rollNo,
           prn: student.prn,
           name: student.name,
+          department: student.department,
           division: student.division,
           batch: student.batch
         },

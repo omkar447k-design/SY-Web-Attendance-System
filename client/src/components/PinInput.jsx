@@ -12,13 +12,12 @@ export function PinInput({ length = 4, onComplete, disabled = false, autoFocus =
 
   const handleChange = (index, value) => {
     if (disabled) return;
-    const cleanVal = value.replace(/\D/g, '').slice(-1); // Take last single numeric digit
+    const cleanVal = value.replace(/\D/g, '').slice(-1);
 
     const newDigits = [...digits];
     newDigits[index] = cleanVal;
     setDigits(newDigits);
 
-    // Haptic feedback on mobile if supported
     if (navigator.vibrate) {
       navigator.vibrate(15);
     }
@@ -27,7 +26,6 @@ export function PinInput({ length = 4, onComplete, disabled = false, autoFocus =
       inputRefs.current[index + 1]?.focus();
     }
 
-    // Check if full pin entered
     const fullPin = newDigits.join('');
     if (fullPin.length === length && !newDigits.includes('')) {
       onComplete(fullPin);
@@ -81,10 +79,10 @@ export function PinInput({ length = 4, onComplete, disabled = false, autoFocus =
           disabled={disabled}
           className={`w-14 h-16 sm:w-16 sm:h-20 text-center text-3xl sm:text-4xl font-extrabold rounded-2xl border-2 transition-all duration-200 outline-none select-none
             ${digits[i]
-              ? 'border-brand-500 bg-brand-500/10 text-white shadow-lg shadow-brand-500/20'
-              : 'border-slate-700 bg-slate-800/80 text-slate-300 focus:border-brand-400 focus:bg-slate-800'
+              ? 'border-indigo-600 bg-indigo-50/50 text-indigo-900 shadow-md shadow-indigo-100'
+              : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-indigo-600 focus:bg-white focus:shadow-md'
             }
-            ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-text hover:border-slate-600'}
+            ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-text hover:border-slate-300'}
           `}
         />
       ))}
