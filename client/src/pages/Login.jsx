@@ -250,7 +250,6 @@ export function Login({ onLoginSuccess }) {
 
       let extractedItems = [];
 
-      // 1. OVERWRITE & LOCK FULL NAME
       if (detectedName) {
         setName(detectedName);
         setIsNameLocked(true);
@@ -259,7 +258,6 @@ export function Login({ onLoginSuccess }) {
         setIsNameLocked(false);
       }
 
-      // 2. OVERWRITE & LOCK PRN
       if (detectedPrn) {
         setPrn(detectedPrn);
         setIsPrnLocked(true);
@@ -268,7 +266,6 @@ export function Login({ onLoginSuccess }) {
         setIsPrnLocked(false);
       }
 
-      // 3. OVERWRITE & LOCK DEPARTMENT
       if (detectedDept) {
         setDepartment(detectedDept);
         setIsDeptLocked(true);
@@ -302,7 +299,6 @@ export function Login({ onLoginSuccess }) {
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  // Check if all student compulsory fields are filled
   const isStudentFormComplete = Boolean(
     idCardPreview &&
     rollNo &&
@@ -526,11 +522,11 @@ export function Login({ onLoginSuccess }) {
             </div>
           )}
 
-          {/* STUDENT LOGIN TAB (ALL FIELDS COMPULSORY & EXTRACTED FIELDS LOCKED) */}
+          {/* STUDENT LOGIN TAB */}
           {activeTab === 'student' && (
             <form onSubmit={handleStudentLogin} className="space-y-4">
               
-              {/* 1. MANDATORY ID CARD UPLOAD & AI AUTO-EXTRACTION */}
+              {/* 1. MANDATORY ID CARD UPLOAD */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center justify-between">
                   <span className="flex items-center space-x-1.5 text-indigo-700">
@@ -585,7 +581,7 @@ export function Login({ onLoginSuccess }) {
                         type="button"
                         onClick={handleRemoveIdPhoto}
                         className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 border border-slate-200 transition"
-                        title="Remove ID Card and Unlock Fields"
+                        title="Remove ID Card"
                       >
                         <X className="w-4 h-4" />
                       </button>
@@ -619,7 +615,7 @@ export function Login({ onLoginSuccess }) {
                 )}
               </div>
 
-              {/* 2. DEPARTMENT (LOCKED WHEN EXTRACTED) */}
+              {/* 2. DEPARTMENT */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center justify-between">
                   <span className="flex items-center space-x-1.5">
@@ -652,7 +648,7 @@ export function Login({ onLoginSuccess }) {
                 </select>
               </div>
 
-              {/* 3. DIVISION (COMPULSORY) */}
+              {/* 3. DIVISION */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
                   3. Select Division <span className="text-rose-500 font-bold">*COMPULSORY</span>
@@ -675,7 +671,7 @@ export function Login({ onLoginSuccess }) {
                 </div>
               </div>
 
-              {/* 4. MANUAL ROLL NUMBER + 5. AUTO-EXTRACTED & LOCKED PRN */}
+              {/* 4. MANUAL ROLL NUMBER + 5. PRN */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center justify-between">
@@ -722,7 +718,7 @@ export function Login({ onLoginSuccess }) {
                 </div>
               </div>
 
-              {/* 6. FULL NAME (LOCKED WHEN EXTRACTED FROM ID) */}
+              {/* 6. FULL NAME */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center justify-between">
                   <span>6. Student Full Name <span className="text-rose-500 font-bold">*COMPULSORY</span></span>
@@ -1005,7 +1001,7 @@ export function Login({ onLoginSuccess }) {
                       type="password"
                       value={gatekeeperCode}
                       onChange={(e) => setGatekeeperCode(e.target.value)}
-                      placeholder="Enter access code (Default: admin)"
+                      placeholder="Enter access code"
                       autoFocus
                       className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 focus:border-indigo-600 focus:bg-white outline-none"
                       required
