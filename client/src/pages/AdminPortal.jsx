@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Shield, Users, Settings, AlertTriangle, Download, RefreshCw, UserPlus, Unlock, Search, BookOpen, Key, Building2, ImageIcon, Bell, CheckCircle2, Smartphone, ShieldCheck, KeyRound } from 'lucide-react';
+import { Shield, Users, Settings, AlertTriangle, Download, RefreshCw, UserPlus, Unlock, Search, BookOpen, Key, Building2, ImageIcon, Bell, CheckCircle2, Smartphone, ShieldCheck, KeyRound, Clock, UserCheck } from 'lucide-react';
 import { api } from '../services/api';
 
 const DEPARTMENTS = [
@@ -12,7 +12,7 @@ const DEPARTMENTS = [
 ];
 
 export function AdminPortal() {
-  const [activeTab, setActiveTab] = useState('overview');
+  const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'audit' | 'faculty' | 'roster' | 'defaulters' | 'settings'
   const [stats, setStats] = useState(null);
   const [students, setStudents] = useState([]);
   const [teachers, setTeachers] = useState([]);
@@ -28,7 +28,7 @@ export function AdminPortal() {
   const [selectedPhoto, setSelectedPhoto] = useState(null);
   const [selectedStudentName, setSelectedStudentName] = useState('');
 
-  // New Student Form state
+  // Add Student state
   const [showAddModal, setShowAddModal] = useState(false);
   const [newRollNo, setNewRollNo] = useState('');
   const [newPrn, setNewPrn] = useState('');
@@ -77,7 +77,7 @@ export function AdminPortal() {
 
   useEffect(() => {
     loadData();
-    const interval = setInterval(loadData, 5000); // Auto-refresh live audit logs every 5s
+    const interval = setInterval(loadData, 5000);
     return () => clearInterval(interval);
   }, [divisionFilter, departmentFilter]);
 
@@ -161,6 +161,10 @@ export function AdminPortal() {
 
   const defaulters = students.filter(s => s.isDefaulter && (departmentFilter === 'all' || !s.department || s.department === departmentFilter));
 
+  // Filter logs for students vs faculty
+  const studentLogs = loginLogs.filter(l => l.type === 'NEW_STUDENT_REGISTRATION' || l.type === 'STUDENT_LOGIN');
+  const facultyLogs = loginLogs.filter(l => l.type === 'FACULTY_LECTURE_START' || l.type === 'FACULTY_LECTURE_END');
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-6">
       
@@ -208,14 +212,15 @@ export function AdminPortal() {
         </div>
       </div>
 
-      {/* Tabs */}
+      {/* Navigation Tabs */}
       <div className="flex space-x-2 border-b border-slate-200 pb-2 overflow-x-auto">
         {[
           { id: 'overview', label: '📊 Overview & Stats', icon: Shield },
-          { id: 'audit', label: `🔔 Live Login Audit (${loginLogs.length})`, icon: Bell },
+          { id: 'audit', label: `🔔 Live Student Logins (${studentLogs.length})`, icon: Bell },
+          { id: 'faculty', label: `👨‍🏫 Faculty Lecture Logs (${facultyLogs.length})`, icon: UserCheck },
           { id: 'roster', label: `👥 Verified Student Roster (${filteredStudents.length})`, icon: Users },
-          { id: 'defaulters', label: `⚠️ Defaulter List (${defaulters.length})`, icon: AlertTriangle },
-          { id: 'settings', label: '⚙️ Security & Policies', icon: Settings }
+          { id: 'defaulters', label: `⚠️ Defaulters (<75%) (${defaulters.length})`, icon: AlertTriangle },
+          { id: 'settings', label: '⚙️ Security & Passcodes', icon: Settings }
         ].map(tab => (
           <button
             key={tab.id}
@@ -231,7 +236,7 @@ export function AdminPortal() {
         ))}
       </div>
 
-      {/* TAB 1: OVERVIEW & STATS */}
+      {/* TAB 1: OVERVIEW */}
       {activeTab === 'overview' && (
         <div className="space-y-6">
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -287,16 +292,16 @@ export function AdminPortal() {
         </div>
       )}
 
-      {/* TAB 2: REAL-TIME LOGIN AUDIT LOG & ID VERIFICATION */}
+      {/* TAB 2: LIVE STUDENT LOGINS (AUDIT FEED) */}
       {activeTab === 'audit' && (
         <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
           <div className="flex items-center justify-between pb-3 border-b border-slate-200">
             <div>
               <h3 className="text-base font-extrabold text-slate-900 flex items-center space-x-2">
                 <Bell className="w-5 h-5 text-indigo-600" />
-                <span>Real-Time Student Login & ID Verification Feed</span>
+                <span>Live Student Registration & Login Audit Feed</span>
               </h3>
-              <p className="text-xs text-slate-500 mt-0.5">Live audit trail of verified student registrations with physical ID photos</p>
+              <p className="text-xs text-slate-500 mt-0.5">Real-time logs with verified physical ID card thumbnails and device IDs</p>
             </div>
             <span className="px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-bold border border-emerald-200 flex items-center space-x-1">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
@@ -305,12 +310,12 @@ export function AdminPortal() {
           </div>
 
           <div className="space-y-2.5 max-h-[550px] overflow-y-auto pr-1">
-            {loginLogs.length === 0 ? (
-              <div className="p-8 text-center text-slate-400 text-xs">
-                No recent logins recorded yet.
+            {studentLogs.length === 0 ? (
+              <div className="p-8 text-center text-slate-400 text-xs font-medium">
+                No student logins recorded yet.
               </div>
             ) : (
-              loginLogs.map(log => (
+              studentLogs.map(log => (
                 <div
                   key={log.id}
                   className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 hover:bg-slate-100/80 transition"
@@ -325,7 +330,7 @@ export function AdminPortal() {
                           setSelectedStudentName(log.studentName);
                         }}
                         className="w-12 h-12 rounded-xl object-cover border border-slate-300 shadow-sm cursor-pointer hover:scale-105 transition"
-                        title="Click to view ID Card"
+                        title="Click to view full ID Card"
                       />
                     ) : (
                       <div className="w-12 h-12 rounded-xl bg-indigo-50 text-indigo-600 font-extrabold text-sm flex items-center justify-center border border-indigo-100">
@@ -349,7 +354,7 @@ export function AdminPortal() {
 
                   <div className="flex sm:flex-col items-center sm:items-end justify-between w-full sm:w-auto text-right">
                     <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-                      ✓ Verified ID OCR
+                      ✓ Physical ID Verified
                     </span>
                     <span className="text-[10px] text-slate-400 mt-1 font-medium">
                       {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
@@ -362,7 +367,64 @@ export function AdminPortal() {
         </div>
       )}
 
-      {/* TAB 3: VERIFIED STUDENT ROSTER */}
+      {/* TAB 3: FACULTY LOGIN & LECTURE ACTIVITY LOGS */}
+      {activeTab === 'faculty' && (
+        <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
+          <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+            <div>
+              <h3 className="text-base font-extrabold text-slate-900 flex items-center space-x-2">
+                <UserCheck className="w-5 h-5 text-indigo-600" />
+                <span>Faculty Login & Attendance Session History</span>
+              </h3>
+              <p className="text-xs text-slate-500 mt-0.5">Audit log of lectures conducted by professors across divisions</p>
+            </div>
+          </div>
+
+          <div className="space-y-2.5 max-h-[550px] overflow-y-auto pr-1">
+            {facultyLogs.length === 0 ? (
+              <div className="p-8 text-center text-slate-400 text-xs font-medium">
+                No faculty lectures recorded yet.
+              </div>
+            ) : (
+              facultyLogs.map(log => (
+                <div
+                  key={log.id}
+                  className="p-4 rounded-2xl bg-slate-50 border border-slate-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"
+                >
+                  <div>
+                    <div className="flex items-center space-x-2">
+                      <span className="font-extrabold text-slate-900 text-sm">👨‍🏫 {log.teacherName}</span>
+                      <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-100">
+                        {log.subjectName}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-600 mt-1 font-medium">
+                      Divisions: <span className="font-bold text-slate-900">{log.division}</span>
+                      {log.batch !== 'All' ? ` • Batch: ${log.batch}` : ''}
+                      {log.totalPresent !== undefined ? ` • Verified Present: ${log.totalPresent} students` : ''}
+                    </p>
+                  </div>
+
+                  <div className="text-right">
+                    <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full ${
+                      log.type === 'FACULTY_LECTURE_START'
+                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                        : 'bg-slate-200 text-slate-700'
+                    }`}>
+                      {log.type === 'FACULTY_LECTURE_START' ? '● Session Launched' : 'Concluded'}
+                    </span>
+                    <p className="text-[10px] text-slate-400 mt-1">
+                      {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • {new Date(log.timestamp).toLocaleDateString()}
+                    </p>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* TAB 4: VERIFIED STUDENT ROSTER */}
       {activeTab === 'roster' && (
         <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pb-3 border-b border-slate-200">
@@ -383,7 +445,7 @@ export function AdminPortal() {
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search name / roll..."
+                  placeholder="Search name / roll / PRN..."
                   className="bg-slate-50 border border-slate-300 rounded-xl pl-8 pr-3 py-2 text-xs text-slate-800 placeholder-slate-400 outline-none focus:border-indigo-600"
                 />
               </div>
@@ -398,7 +460,6 @@ export function AdminPortal() {
             </button>
           </div>
 
-          {/* Roster Table */}
           <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
             <table className="w-full text-left text-xs sm:text-sm">
               <thead className="text-slate-500 uppercase bg-slate-50 sticky top-0 border-b border-slate-200">
@@ -471,7 +532,7 @@ export function AdminPortal() {
         </div>
       )}
 
-      {/* TAB 4: DEFAULTERS LIST */}
+      {/* TAB 5: DEFAULTERS */}
       {activeTab === 'defaulters' && (
         <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
           <div className="flex items-center justify-between pb-3 border-b border-slate-200">
@@ -519,11 +580,9 @@ export function AdminPortal() {
         </div>
       )}
 
-      {/* TAB 5: SECURITY & POLICIES (FACULTY PASSCODE & HOD PASSWORD) */}
+      {/* TAB 6: SECURITY & POLICIES */}
       {activeTab === 'settings' && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          
-          {/* Faculty Passcode Management */}
           <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm flex flex-col justify-between">
             <div>
               <h3 className="text-base font-extrabold text-slate-900 mb-2 flex items-center space-x-2">
@@ -565,7 +624,6 @@ export function AdminPortal() {
             </div>
           </div>
 
-          {/* Change HOD Private Password */}
           <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm flex flex-col justify-between">
             <div>
               <h3 className="text-base font-extrabold text-slate-900 mb-2 flex items-center space-x-2">
@@ -626,7 +684,6 @@ export function AdminPortal() {
               </form>
             </div>
           </div>
-
         </div>
       )}
 

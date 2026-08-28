@@ -17,29 +17,24 @@ export class TeacherController {
     if (now > endTime) {
       active.status = 'closed';
       db.set('sessions', sessions);
-      return res.json({ success: true, active: false, message: 'Session auto-closed (time expired)' });
+      return res.json({ success: true, active: false });
     }
 
     const pinInfo = PinService.getCurrentPinInfo(active.id);
     const attendance = db.get('attendance').filter(a => a.sessionId === active.id);
-    
-    // Calculate total students across all selected divisions
     const sessionDivisions = active.divisions || [active.division];
     const totalStudents = db.get('students').filter(
       s => (!active.department || s.department === active.department) && sessionDivisions.includes(s.division)
     ).length;
-
-    const remainingSessionMs = Math.max(0, endTime.getTime() - now.getTime());
-    const remainingSessionSec = Math.ceil(remainingSessionMs / 1000);
+    const remainingSessionSec = Math.max(0, Math.ceil((endTime.getTime() - now.getTime()) / 1000));
 
     res.json({
       success: true,
       active: true,
       session: {
         ...active,
-        divisions: sessionDivisions,
-        remainingSessionSec,
         pinInfo,
+        remainingSessionSec,
         totalPresent: attendance.length,
         totalStudents,
         attendees: attendance
@@ -50,47 +45,46 @@ export class TeacherController {
   static startSession(req, res) {
     const {
       teacherId,
-      teacherName,
-      subjectId,
+      teacherName = 'Faculty Member',
       subjectName,
       department = 'comp',
       divisions = ['SY-A'],
-      division = 'SY-A',
       batch = 'All',
       durationMinutes = 3
     } = req.body;
 
-    const effectiveDivisions = Array.isArray(divisions) && divisions.length > 0 ? divisions : [division];
-    const effectiveSubjectName = subjectName || 'Class Lecture';
+    if (!subjectName) {
+      return res.status(400).json({ success: false, error: 'Subject is required' });
+    }
+
+    const selectedDivs = Array.isArray(divisions) && divisions.length > 0 ? divisions : ['SY-A'];
+    const divisionLabel = selectedDivs.join(' + ');
 
     const sessions = db.get('sessions');
-    // Close any previous active sessions for this teacher
+    // Close any previous sessions for this teacher
     sessions.forEach(s => {
       if (s.teacherId === teacherId && s.status === 'active') {
         s.status = 'closed';
       }
     });
 
-    const startTime = new Date();
-    const settings = db.getSettings();
-    const effectiveDuration = Math.min(Number(durationMinutes) || settings.defaultDurationMinutes, settings.maxDurationMinutes);
-    const endTime = new Date(startTime.getTime() + effectiveDuration * 60 * 1000);
-    const sessionId = `SESS_${Date.now()}`;
+    const now = new Date();
+    const duration = Math.min(Math.max(Number(durationMinutes) || 3, 1), 15);
+    const endTime = new Date(now.getTime() + duration * 60 * 1000);
 
     const newSession = {
-      id: sessionId,
-      teacherId: teacherId || `T_${department}_${Date.now()}`,
-      teacherName: teacherName || 'Faculty In-Charge',
-      subjectId: subjectId || `SUB_${Date.now()}`,
-      subjectName: effectiveSubjectName,
+      id: `SESS_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+      teacherId,
+      teacherName,
+      subjectId: `SUB_${Date.now()}`,
+      subjectName,
       department,
-      divisions: effectiveDivisions,
-      division: effectiveDivisions.join(', '),
+      division: divisionLabel,
+      divisions: selectedDivs,
       batch,
-      date: startTime.toISOString().split('T')[0],
-      startTime: startTime.toISOString(),
+      startTime: now.toISOString(),
       endTime: endTime.toISOString(),
-      durationMinutes: effectiveDuration,
+      durationMinutes: duration,
       status: 'active',
       totalPresent: 0
     };
@@ -98,17 +92,32 @@ export class TeacherController {
     sessions.push(newSession);
     db.set('sessions', sessions);
 
-    const pinInfo = PinService.getCurrentPinInfo(sessionId);
+    // RECORD FACULTY LECTURE LAUNCH FOR HOD MONITORING
+    db.addLog({
+      type: 'FACULTY_LECTURE_START',
+      teacherId,
+      teacherName,
+      department,
+      subjectName,
+      division: divisionLabel,
+      divisions: selectedDivs,
+      batch,
+      durationMinutes: duration,
+      status: 'LECTURE_SESSION_ACTIVE',
+      details: `Faculty ${teacherName} started lecture for ${divisionLabel}`
+    });
+
+    const pinInfo = PinService.getCurrentPinInfo(newSession.id);
     const totalStudents = db.get('students').filter(
-      s => (!department || s.department === department) && effectiveDivisions.includes(s.division)
+      s => (!department || s.department === department) && selectedDivs.includes(s.division)
     ).length;
 
     res.json({
       success: true,
       session: {
         ...newSession,
-        remainingSessionSec: effectiveDuration * 60,
         pinInfo,
+        remainingSessionSec: duration * 60,
         totalPresent: 0,
         totalStudents,
         attendees: []
@@ -128,12 +137,18 @@ export class TeacherController {
     const currentEnd = new Date(session.endTime);
     const newEnd = new Date(currentEnd.getTime() + Number(extraMinutes) * 60 * 1000);
     session.endTime = newEnd.toISOString();
-    session.durationMinutes += Number(extraMinutes);
-
+    session.durationMinutes = (session.durationMinutes || 0) + Number(extraMinutes);
     db.set('sessions', sessions);
 
-    const remainingSessionSec = Math.max(0, Math.ceil((newEnd.getTime() - Date.now()) / 1000));
-    res.json({ success: true, remainingSessionSec, session });
+    const now = new Date();
+    const remainingSessionSec = Math.max(0, Math.ceil((newEnd.getTime() - now.getTime()) / 1000));
+
+    res.json({
+      success: true,
+      message: `Session extended by ${extraMinutes} minute(s)`,
+      remainingSessionSec,
+      session
+    });
   }
 
   static endSession(req, res) {
@@ -149,34 +164,52 @@ export class TeacherController {
     session.endTime = new Date().toISOString();
     db.set('sessions', sessions);
 
-    const attendance = db.get('attendance').filter(a => a.sessionId === sessionId);
-    session.totalPresent = attendance.length;
-    db.set('sessions', sessions);
+    // RECORD CLOSURE LOG FOR HOD
+    const attendance = db.get('attendance').filter(a => a.sessionId === session.id);
+    db.addLog({
+      type: 'FACULTY_LECTURE_END',
+      teacherId: session.teacherId,
+      teacherName: session.teacherName,
+      department: session.department,
+      subjectName: session.subjectName,
+      division: session.division,
+      totalPresent: attendance.length,
+      status: 'LECTURE_CLOSED',
+      details: `Lecture concluded with ${attendance.length} verified present students`
+    });
 
-    res.json({ success: true, message: 'Session closed successfully', totalPresent: attendance.length });
+    res.json({
+      success: true,
+      message: 'Session locked and attendance concluded',
+      session
+    });
   }
 
   static manualMark(req, res) {
-    const { sessionId, studentId, rollNo } = req.body;
+    const { sessionId, rollNo, studentId } = req.body;
     const sessions = db.get('sessions');
-    const session = sessions.find(s => s.id === sessionId);
-    if (!session) return res.status(404).json({ success: false, error: 'Session not found' });
+    const session = sessions.find(s => s.id === sessionId && s.status === 'active');
+
+    if (!session) {
+      return res.status(404).json({ success: false, error: 'Active session not found' });
+    }
 
     const students = db.get('students');
-    const student = students.find(
-      s => s.id === studentId || s.rollNo === Number(rollNo || studentId)
-    );
-    if (!student) return res.status(404).json({ success: false, error: 'Student record not found in roster' });
+    const student = students.find(s => s.id === studentId || s.rollNo === Number(rollNo));
+
+    if (!student) {
+      return res.status(404).json({ success: false, error: `Student with Roll No ${rollNo} not found` });
+    }
 
     const attendance = db.get('attendance');
-    const alreadyMarked = attendance.find(a => a.sessionId === sessionId && a.studentId === student.id);
-    if (alreadyMarked) {
-      return res.json({ success: true, message: 'Student is already marked present' });
+    const existing = attendance.find(a => a.sessionId === sessionId && a.studentId === student.id);
+    if (existing) {
+      return res.json({ success: true, message: 'Student already marked present', record: existing });
     }
 
     const record = {
       id: `ATT_${sessionId}_${student.id}`,
-      sessionId,
+      sessionId: session.id,
       studentId: student.id,
       rollNo: student.rollNo,
       studentName: student.name,
@@ -187,7 +220,7 @@ export class TeacherController {
       subjectName: session.subjectName,
       timestamp: new Date().toISOString(),
       status: 'Present',
-      verifiedVia: 'Manual Override'
+      verifiedVia: 'Teacher Manual Override'
     };
 
     attendance.push(record);
@@ -196,20 +229,19 @@ export class TeacherController {
     session.totalPresent = (session.totalPresent || 0) + 1;
     db.set('sessions', sessions);
 
-    res.json({ success: true, data: record });
+    res.json({
+      success: true,
+      message: `Marked Roll No ${student.rollNo} as Present`,
+      record
+    });
   }
 
   static exportSessionExcel(req, res) {
     const { sessionId } = req.params;
-    const sessions = db.get('sessions');
-    const session = sessions.find(s => s.id === sessionId);
-    if (!session) return res.status(404).json({ success: false, error: 'Session not found' });
-
-    const attendance = db.get('attendance').filter(a => a.sessionId === sessionId);
-    const buffer = ExcelService.generateSessionExcel(session, attendance);
+    const buffer = ExcelService.generateSessionReport(sessionId);
 
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', `attachment; filename=Attendance_${session.subjectName.replace(/\s+/g, '_')}_${session.date}.xlsx`);
+    res.setHeader('Content-Disposition', `attachment; filename=Lecture_Attendance_${sessionId}.xlsx`);
     res.send(buffer);
   }
 }

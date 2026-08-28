@@ -1,16 +1,16 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { GraduationCap, Users, Shield, ArrowRight, Smartphone, Lock, X, Building2, Camera, CheckCircle2, Sparkles, User, BookOpen, CheckSquare, Square, KeyRound, AlertTriangle, ShieldCheck } from 'lucide-react';
+import { GraduationCap, Users, Shield, ArrowRight, Smartphone, Lock, X, Building2, Camera, CheckCircle2, Sparkles, User, BookOpen, CheckSquare, Square, KeyRound, AlertTriangle, ShieldCheck, Hash, Fingerprint } from 'lucide-react';
 import { createWorker } from 'tesseract.js';
 import { api } from '../services/api';
 import { getDeviceIdentity } from '../services/fingerprint';
 
 const DEPARTMENTS = [
-  { id: 'comp', name: '1. Computer Science & Engineering', code: 'CSE' },
-  { id: 'it', name: '2. Information Technology', code: 'IT' },
-  { id: 'aids', name: '3. Artificial Intelligence & Data Science', code: 'AI&DS' },
-  { id: 'entc', name: '4. Electronics & Telecommunication', code: 'ENTC' },
-  { id: 'elec', name: '5. Electrical Engineering', code: 'ELEC' },
-  { id: 'instru', name: '6. Instrumentation Engineering', code: 'INSTRU' }
+  { id: 'comp', name: '1. Computer Science & Engineering', code: 'CSE', keywords: ['computer', 'cse', 'comp', 'software'] },
+  { id: 'it', name: '2. Information Technology', code: 'IT', keywords: ['information', 'it', 'infotech'] },
+  { id: 'aids', name: '3. Artificial Intelligence & Data Science', code: 'AI&DS', keywords: ['artificial', 'intelligence', 'data science', 'ai&ds', 'aids', 'ai/ds', 'ai'] },
+  { id: 'entc', name: '4. Electronics & Telecommunication', code: 'ENTC', keywords: ['telecommunication', 'entc', 'electronics and telecommunication', 'e&tc', 'extc', 'etc'] },
+  { id: 'elec', name: '5. Electrical Engineering', code: 'ELEC', keywords: ['electrical', 'ee', 'elec'] },
+  { id: 'instru', name: '6. Instrumentation Engineering', code: 'INSTRU', keywords: ['instrumentation', 'instru', 'inst'] }
 ];
 
 const DIVISIONS = ['SY-A', 'SY-B', 'SY-C'];
@@ -24,32 +24,73 @@ const DEFAULT_SUBJECTS = {
   instru: ['Sensors & Transducers (IN201)', 'Industrial Instrumentation (IN202)', 'Process Control (IN203)', 'Instrumentation Lab']
 };
 
-function extractStudentNameFromOCR(rawText) {
-  if (!rawText) return '';
-  const lines = rawText.split('\n').map(l => l.trim()).filter(Boolean);
+function parseIdCardDetails(rawText) {
+  if (!rawText) return { name: '', prn: '', departmentId: null };
 
+  const lines = rawText.split('\n').map(l => l.trim()).filter(Boolean);
+  const fullTextLower = rawText.toLowerCase();
+
+  // 1. EXTRACT PRN / STUDENT ID
+  let detectedPrn = '';
+  const prnPatterns = [
+    /(?:prn|prn\s*no|p\.r\.n|reg\s*no|enrollment|id\s*no|student\s*id)\s*[:\-\. ]+\s*([a-zA-Z0-9]{6,16})/i,
+    /\b(12\d{3}[a-zA-Z]{1,3}\d{3,6})\b/i,
+    /\b(20\d{2}[a-zA-Z]{2,5}\d{3,6})\b/i,
+    /\b([a-zA-Z]{2,4}\d{4,10})\b/i
+  ];
+
+  for (const pattern of prnPatterns) {
+    const match = rawText.match(pattern);
+    if (match && match[1]) {
+      detectedPrn = match[1].toUpperCase().trim();
+      break;
+    }
+  }
+
+  // 2. EXTRACT DEPARTMENT / BRANCH
+  let detectedDeptId = null;
+  for (const dept of DEPARTMENTS) {
+    for (const kw of dept.keywords) {
+      if (fullTextLower.includes(kw)) {
+        detectedDeptId = dept.id;
+        break;
+      }
+    }
+    if (detectedDeptId) break;
+  }
+
+  // 3. EXTRACT STUDENT FULL NAME
+  let detectedName = '';
   for (const line of lines) {
     const nameMatch = line.match(/(?:student\s*name|name|full\s*name)\s*[:\-\. ]+\s*([a-zA-Z\s\.]{3,35})/i);
     if (nameMatch && nameMatch[1]) {
       const clean = nameMatch[1].replace(/[^a-zA-Z\s]/g, '').trim();
       if (clean.length >= 3 && !/college|department|university|engineering|technology/i.test(clean)) {
-        return toTitleCase(clean);
+        detectedName = toTitleCase(clean);
+        break;
       }
     }
   }
 
-  for (const line of lines) {
-    const clean = line.replace(/[^a-zA-Z\s]/g, '').trim();
-    const words = clean.split(/\s+/).filter(w => w.length >= 2);
-    if (words.length >= 2 && words.length <= 4 && clean.length >= 5 && clean.length <= 35) {
-      const isBlacklisted = /college|institute|department|university|engineering|technology|identity|card|branch|division|semester|academic|year|valid|holder|signature/i.test(clean);
-      if (!isBlacklisted) {
-        return toTitleCase(clean);
+  if (!detectedName) {
+    for (const line of lines) {
+      const clean = line.replace(/[^a-zA-Z\s]/g, '').trim();
+      const words = clean.split(/\s+/).filter(w => w.length >= 2);
+      if (words.length >= 2 && words.length <= 4 && clean.length >= 5 && clean.length <= 35) {
+        const isBlacklisted = /college|institute|department|university|engineering|technology|identity|card|branch|division|semester|academic|year|valid|holder|signature/i.test(clean);
+        if (!isBlacklisted) {
+          detectedName = toTitleCase(clean);
+          break;
+        }
       }
     }
   }
 
-  return '';
+  return {
+    name: detectedName,
+    prn: detectedPrn,
+    departmentId: detectedDeptId
+  };
 }
 
 function toTitleCase(str) {
@@ -61,6 +102,7 @@ function toTitleCase(str) {
     .join(' ');
 }
 
+// iOS & Android Compatible Canvas Compressor
 function compressImage(file) {
   return new Promise((resolve) => {
     const reader = new FileReader();
@@ -98,11 +140,11 @@ export function Login({ onLoginSuccess }) {
   // Student form state
   const [department, setDepartment] = useState('comp');
   const [division, setDivision] = useState('SY-A');
-  const [rollNo, setRollNo] = useState('22');
+  const [rollNo, setRollNo] = useState('');
   const [prn, setPrn] = useState('');
   const [name, setName] = useState('');
 
-  // ID Card Upload & OCR state (MANDATORY FOR LEGITIMACY)
+  // ID Card Upload & AI Extraction State
   const [idCardPreview, setIdCardPreview] = useState(null);
   const [ocrScanning, setOcrScanning] = useState(false);
   const [ocrProgress, setOcrProgress] = useState(0);
@@ -110,7 +152,7 @@ export function Login({ onLoginSuccess }) {
   const [ocrSuccessMsg, setOcrSuccessMsg] = useState('');
   const fileInputRef = useRef(null);
 
-  // Teacher dynamic form state with Multi-Division & Passcode Protection
+  // Teacher dynamic form state with Passcode Protection
   const [teacherName, setTeacherName] = useState('Dr. A. K. Sharma');
   const [teacherDept, setTeacherDept] = useState('comp');
   const [selectedDivisions, setSelectedDivisions] = useState(['SY-A']);
@@ -121,7 +163,7 @@ export function Login({ onLoginSuccess }) {
 
   // 2-Tier HOD Admin Modal State
   const [showAdminModal, setShowAdminModal] = useState(false);
-  const [gatekeeperStage, setGatekeeperStage] = useState(1); // 1: Enter Gatekeeper Code, 2: Select Dept & HOD Password
+  const [gatekeeperStage, setGatekeeperStage] = useState(1);
   const [gatekeeperCode, setGatekeeperCode] = useState('');
   const [hodDeptList, setHodDeptList] = useState([]);
   const [selectedHodDept, setSelectedHodDept] = useState('comp');
@@ -159,6 +201,7 @@ export function Login({ onLoginSuccess }) {
     }
   };
 
+  // AI OCR SCANNER (Extracts Name, PRN, and Department)
   const handleIdCardSelected = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -166,36 +209,50 @@ export function Login({ onLoginSuccess }) {
     setError('');
     setOcrSuccessMsg('');
     setOcrScanning(true);
-    setOcrProgress(10);
-    setOcrStatusText('Optimizing ID image for fast scanning...');
+    setOcrProgress(15);
+    setOcrStatusText('Preparing ID card image...');
 
     try {
       const compressedDataUrl = await compressImage(file);
       setIdCardPreview(compressedDataUrl);
 
       setOcrProgress(35);
-      setOcrStatusText('Analyzing ID Card via AI OCR...');
+      setOcrStatusText('Scanning Name, PRN & Department via AI...');
 
       const worker = await createWorker('eng');
       
-      setOcrProgress(65);
-      setOcrStatusText('Extracting verified student name...');
+      setOcrProgress(70);
+      setOcrStatusText('Extracting verified identity data...');
 
       const ret = await worker.recognize(compressedDataUrl);
       await worker.terminate();
 
       setOcrProgress(100);
-      const detectedName = extractStudentNameFromOCR(ret.data.text);
+      const { name: detectedName, prn: detectedPrn, departmentId: detectedDept } = parseIdCardDetails(ret.data.text);
 
+      let extractedItems = [];
       if (detectedName) {
         setName(detectedName);
-        setOcrSuccessMsg(`✅ Verified ID Card: Name recognized as "${detectedName}"`);
+        extractedItems.push(`Name: "${detectedName}"`);
+      }
+      if (detectedPrn) {
+        setPrn(detectedPrn);
+        extractedItems.push(`PRN: "${detectedPrn}"`);
+      }
+      if (detectedDept) {
+        setDepartment(detectedDept);
+        const deptObj = DEPARTMENTS.find(d => d.id === detectedDept);
+        extractedItems.push(`Dept: ${deptObj?.code || detectedDept.toUpperCase()}`);
+      }
+
+      if (extractedItems.length > 0) {
+        setOcrSuccessMsg(`✅ AI Auto-Extracted from ID: ${extractedItems.join(' • ')}`);
       } else {
-        setOcrSuccessMsg('📷 ID photo attached. Please verify your name below.');
+        setOcrSuccessMsg('📷 ID photo attached. Please verify extracted fields.');
       }
     } catch (err) {
       console.error('OCR Error:', err);
-      setOcrSuccessMsg('📷 ID photo attached. Please enter your name below.');
+      setOcrSuccessMsg('📷 ID photo attached. Please verify extracted fields.');
     } finally {
       setOcrScanning(false);
     }
@@ -205,6 +262,7 @@ export function Login({ onLoginSuccess }) {
     setIdCardPreview(null);
     setOcrSuccessMsg('');
     setName('');
+    setPrn('');
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
@@ -212,25 +270,28 @@ export function Login({ onLoginSuccess }) {
     e.preventDefault();
     setError('');
 
-    // STRICT LEGITIMACY REQUIREMENT: ID Card must be uploaded
     if (!idCardPreview) {
-      setError('🛑 College ID Card Required: You must take or upload a clear photo of your physical college ID card.');
+      setError('🛑 College ID Card Required: Please snap / upload a clear photo of your physical college ID card.');
+      return;
+    }
+
+    if (!rollNo || Number(rollNo) <= 0) {
+      setError('🛑 Roll Number Required: Please type your manual Roll Number.');
       return;
     }
 
     if (!name || name.trim().length < 3) {
-      setError('🛑 Name Required: Please ensure your full student name is readable from your ID card.');
+      setError('🛑 Name Required: Please ensure your student name is readable from your ID card.');
       return;
     }
 
-    if (!rollNo) return setError('Please enter your Roll Number');
     setLoading(true);
 
     try {
       const { deviceId, fingerprint } = await getDeviceIdentity();
       const res = await api.studentLogin({
         rollNo: Number(rollNo),
-        prn: prn ? String(prn) : undefined,
+        prn: prn ? String(prn).trim() : undefined,
         name: name.trim(),
         idCardPhoto: idCardPreview,
         department,
@@ -260,7 +321,6 @@ export function Login({ onLoginSuccess }) {
     setError('');
     setLoading(true);
     try {
-      // Verify Faculty Passcode with backend
       await api.verifyFacultyPasscode(facultyPasscode);
 
       const teacherProfile = {
@@ -281,7 +341,6 @@ export function Login({ onLoginSuccess }) {
     }
   };
 
-  // Tier 1 Gatekeeper Submit
   const handleGatekeeperSubmit = async (e) => {
     e.preventDefault();
     setAdminError('');
@@ -303,7 +362,6 @@ export function Login({ onLoginSuccess }) {
     }
   };
 
-  // Tier 2 HOD Department Login & First-Time Setup Submit
   const handleHodLoginSubmit = async (e) => {
     e.preventDefault();
     setAdminError('');
@@ -396,15 +454,110 @@ export function Login({ onLoginSuccess }) {
             </div>
           )}
 
-          {/* STUDENT LOGIN TAB (STRICT ID CARD VERIFICATION & HARDWARE LOCK) */}
+          {/* STUDENT LOGIN TAB (AI ID CARD AUTO-FILL + MANUAL ROLL NO) */}
           {activeTab === 'student' && (
             <form onSubmit={handleStudentLogin} className="space-y-4">
               
-              {/* Department Dropdown */}
+              {/* MANDATORY ID CARD UPLOAD & AI OCR (iOS & Android Compatible) */}
               <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center space-x-1.5">
-                  <Building2 className="w-3.5 h-3.5 text-indigo-600" />
-                  <span>Select Engineering Department</span>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center justify-between">
+                  <span className="flex items-center space-x-1.5 text-indigo-700">
+                    <Camera className="w-3.5 h-3.5" />
+                    <span>Upload / Snap College ID Card <span className="text-rose-500 font-bold">*REQUIRED</span></span>
+                  </span>
+                  <span className="text-[10px] text-slate-400 font-normal normal-case">iOS & Android Ready</span>
+                </label>
+
+                {/* Native file input with iOS Safari support */}
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  accept="image/*"
+                  onChange={handleIdCardSelected}
+                  className="hidden"
+                />
+
+                {!idCardPreview ? (
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="w-full p-4 rounded-2xl border-2 border-dashed border-indigo-300 hover:border-indigo-600 bg-indigo-50/40 hover:bg-indigo-50/80 flex flex-col items-center justify-center space-y-2 transition-all cursor-pointer group"
+                  >
+                    <div className="w-10 h-10 rounded-xl bg-white border border-indigo-200 group-hover:border-indigo-400 flex items-center justify-center text-indigo-600 shadow-sm transition">
+                      <Camera className="w-5 h-5" />
+                    </div>
+                    <div className="text-center">
+                      <p className="text-xs font-extrabold text-indigo-900">
+                        📸 Tap to Snap or Choose ID from Gallery
+                      </p>
+                      <p className="text-[11px] text-indigo-700 mt-0.5 font-medium">
+                        AI will auto-extract your Name, PRN & Department directly from your ID card!
+                      </p>
+                    </div>
+                  </button>
+                ) : (
+                  <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
+                    <div className="flex items-center space-x-3">
+                      <img
+                        src={idCardPreview}
+                        alt="ID Preview"
+                        className="w-14 h-14 rounded-xl object-cover border border-slate-300 shadow-sm"
+                      />
+                      <div className="flex-1 overflow-hidden">
+                        <div className="flex items-center space-x-1 text-xs font-bold text-slate-900">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
+                          <span className="truncate">Physical ID Card Attached</span>
+                        </div>
+                        <p className="text-[11px] text-slate-500 mt-0.5">Verified & Saved for HOD Inspection</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleRemoveIdPhoto}
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 border border-slate-200 transition"
+                        title="Remove ID Card"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    {ocrScanning && (
+                      <div className="pt-2">
+                        <div className="flex items-center justify-between text-[11px] text-indigo-700 font-bold mb-1">
+                          <span className="flex items-center space-x-1">
+                            <Sparkles className="w-3 h-3 animate-spin" />
+                            <span>{ocrStatusText}</span>
+                          </span>
+                          <span>{ocrProgress}%</span>
+                        </div>
+                        <div className="w-full h-1.5 rounded-full bg-slate-200 overflow-hidden">
+                          <div
+                            className="h-full bg-indigo-600 rounded-full transition-all duration-300"
+                            style={{ width: `${ocrProgress}%` }}
+                          ></div>
+                        </div>
+                      </div>
+                    )}
+
+                    {ocrSuccessMsg && !ocrScanning && (
+                      <div className="p-2 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-medium flex items-center space-x-1.5">
+                        <Sparkles className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
+                        <span className="truncate">{ocrSuccessMsg}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Department Dropdown (Auto-selected from ID card) */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center justify-between">
+                  <span className="flex items-center space-x-1.5">
+                    <Building2 className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>Engineering Department</span>
+                  </span>
+                  <span className="text-[10px] text-indigo-600 font-semibold normal-case">
+                    {idCardPreview ? '✨ Auto-Matched from ID' : ''}
+                  </span>
                 </label>
                 <select
                   value={department}
@@ -442,11 +595,15 @@ export function Login({ onLoginSuccess }) {
                 </div>
               </div>
 
-              {/* Roll Number & PRN */}
+              {/* MANUAL ROLL NUMBER + AUTO-EXTRACTED PRN */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                    Roll Number
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center justify-between">
+                    <span className="flex items-center space-x-1">
+                      <Hash className="w-3.5 h-3.5 text-indigo-600" />
+                      <span>Roll Number</span>
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-normal normal-case">(Type Manually)</span>
                   </label>
                   <input
                     type="number"
@@ -454,128 +611,42 @@ export function Login({ onLoginSuccess }) {
                     max="120"
                     value={rollNo}
                     onChange={(e) => setRollNo(e.target.value)}
-                    placeholder="e.g. 22"
-                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 font-bold focus:border-indigo-600 focus:bg-white outline-none"
+                    placeholder="e.g. 24"
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-base text-slate-900 font-bold focus:border-indigo-600 focus:bg-white outline-none"
                     required
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                    PRN / Student ID <span className="text-slate-400 font-normal normal-case">(Optional)</span>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center justify-between">
+                    <span>PRN / Student ID</span>
+                    <span className="text-[10px] text-indigo-600 font-semibold normal-case">
+                      {prn ? '✨ Auto-Filled from ID' : ''}
+                    </span>
                   </label>
                   <input
                     type="text"
                     value={prn}
                     onChange={(e) => setPrn(e.target.value)}
-                    placeholder="e.g. 12251ET049"
-                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 focus:border-indigo-600 focus:bg-white outline-none"
+                    placeholder="Auto-extracted from ID"
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 font-bold focus:border-indigo-600 focus:bg-white outline-none"
                   />
                 </div>
               </div>
 
-              {/* MANDATORY ID CARD UPLOAD & AI OCR (Camera & Gallery on iOS and Android) */}
-              <div className="pt-2">
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center justify-between">
-                  <span className="flex items-center space-x-1.5 text-indigo-700">
-                    <Camera className="w-3.5 h-3.5" />
-                    <span>Upload College ID Card <span className="text-rose-500 font-bold">*MANDATORY</span></span>
-                  </span>
-                  <span className="text-[10px] text-slate-400 font-normal normal-case">Camera & Gallery</span>
-                </label>
-
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  accept="image/*"
-                  onChange={handleIdCardSelected}
-                  className="hidden"
-                />
-
-                {!idCardPreview ? (
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="w-full p-4 rounded-2xl border-2 border-dashed border-indigo-300 hover:border-indigo-600 bg-indigo-50/40 hover:bg-indigo-50/80 flex flex-col items-center justify-center space-y-2 transition-all cursor-pointer group"
-                  >
-                    <div className="w-10 h-10 rounded-xl bg-white border border-indigo-200 group-hover:border-indigo-400 flex items-center justify-center text-indigo-600 shadow-sm transition">
-                      <Camera className="w-5 h-5" />
-                    </div>
-                    <div className="text-center">
-                      <p className="text-xs font-extrabold text-indigo-900">
-                        📸 Tap to Snap or Choose ID from Gallery
-                      </p>
-                      <p className="text-[11px] text-indigo-700 mt-0.5 font-medium">
-                        Clear photo required to verify name and prevent fake logins
-                      </p>
-                    </div>
-                  </button>
-                ) : (
-                  <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
-                    <div className="flex items-center space-x-3">
-                      <img
-                        src={idCardPreview}
-                        alt="ID Preview"
-                        className="w-14 h-14 rounded-xl object-cover border border-slate-300 shadow-sm"
-                      />
-                      <div className="flex-1 overflow-hidden">
-                        <div className="flex items-center space-x-1 text-xs font-bold text-slate-900">
-                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
-                          <span className="truncate">Physical ID Card Attached</span>
-                        </div>
-                        <p className="text-[11px] text-slate-500 mt-0.5">Saved for HOD / Faculty Verification</p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={handleRemoveIdPhoto}
-                        className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 border border-slate-200 transition"
-                        title="Remove and Re-upload ID Card"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    </div>
-
-                    {ocrScanning && (
-                      <div className="pt-2">
-                        <div className="flex items-center justify-between text-[11px] text-indigo-700 font-bold mb-1">
-                          <span className="flex items-center space-x-1">
-                            <Sparkles className="w-3 h-3 animate-spin" />
-                            <span>{ocrStatusText}</span>
-                          </span>
-                          <span>{ocrProgress}%</span>
-                        </div>
-                        <div className="w-full h-1.5 rounded-full bg-slate-200 overflow-hidden">
-                          <div
-                            className="h-full bg-indigo-600 rounded-full transition-all duration-300"
-                            style={{ width: `${ocrProgress}%` }}
-                          ></div>
-                        </div>
-                      </div>
-                    )}
-
-                    {ocrSuccessMsg && !ocrScanning && (
-                      <div className="p-2 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-medium flex items-center space-x-1.5">
-                        <Sparkles className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
-                        <span>{ocrSuccessMsg}</span>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* Student Name Input */}
+              {/* Student Name Input (Auto-Extracted from ID) */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center justify-between">
                   <span>Student Full Name</span>
                   <span className="text-[10px] text-indigo-600 font-semibold normal-case">
-                    {name ? '✨ Auto-Detected from ID' : '(Reads from ID Card)'}
+                    {name ? '✨ Verified from ID Card' : '(Auto-Fills from ID Card)'}
                   </span>
                 </label>
                 <input
                   type="text"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="e.g. Omkar Pawar"
+                  placeholder="Auto-extracted from ID Card"
                   className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 font-bold focus:border-indigo-600 focus:bg-white outline-none"
                   required
                 />
@@ -593,15 +664,15 @@ export function Login({ onLoginSuccess }) {
                 </button>
               </div>
 
-              <div className="text-center pt-2">
+              <div className="text-center pt-1">
                 <p className="text-[11px] text-slate-500 font-medium">
-                  🔒 1-Device Binding: Your phone will be locked to this Roll Number.
+                  🔒 1-Device Binding: Your smartphone will be permanently locked to this Roll Number & ID.
                 </p>
               </div>
             </form>
           )}
 
-          {/* TEACHER / FACULTY TAB (Passcode Protected to Prevent Student Intrusion) */}
+          {/* TEACHER / FACULTY TAB (Passcode Protected) */}
           {activeTab === 'teacher' && (
             <form onSubmit={handleTeacherLogin} className="space-y-4">
               
@@ -727,7 +798,7 @@ export function Login({ onLoginSuccess }) {
                 </select>
               </div>
 
-              {/* FACULTY SECURITY PASSCODE (Restricts Student Access) */}
+              {/* FACULTY SECURITY PASSCODE */}
               <div className="pt-1">
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center space-x-1.5">
                   <KeyRound className="w-3.5 h-3.5 text-indigo-600" />
@@ -741,7 +812,7 @@ export function Login({ onLoginSuccess }) {
                   className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 font-semibold focus:border-indigo-600 focus:bg-white outline-none"
                   required
                 />
-                <p className="text-[10px] text-slate-400 mt-1">Default passcode: <code className="text-slate-600 font-mono">faculty@2026</code> (Set by HOD)</p>
+                <p className="text-[10px] text-slate-400 mt-1">Default passcode: <code className="text-slate-600 font-mono">faculty@2026</code></p>
               </div>
 
               <div className="pt-2">
@@ -872,7 +943,6 @@ export function Login({ onLoginSuccess }) {
                   </div>
 
                   {hodIsFirstTime ? (
-                    // FIRST TIME SETUP FIELDS
                     <div className="space-y-3 p-3.5 rounded-2xl bg-indigo-50/60 border border-indigo-200">
                       <div className="text-xs font-bold text-indigo-900 flex items-center space-x-1.5">
                         <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
@@ -902,7 +972,6 @@ export function Login({ onLoginSuccess }) {
                       </div>
                     </div>
                   ) : (
-                    // NORMAL LOGIN FIELD
                     <div>
                       <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
                         HOD Password

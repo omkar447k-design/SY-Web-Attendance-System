@@ -1,11 +1,11 @@
-// Multi-Department & Serverless-Ready Database with 6 HOD Accounts, Audit Logs & Device Locks
+// Multi-Department & Serverless-Ready Database with 6 HOD Accounts, Faculty Lecture Logs & Audit
 export const DEPARTMENTS = [
-  { id: 'comp', name: 'Computer Science & Engineering', code: 'CSE' },
-  { id: 'it', name: 'Information Technology', code: 'IT' },
-  { id: 'aids', name: 'Artificial Intelligence & Data Science', code: 'AI&DS' },
-  { id: 'entc', name: 'Electronics & Telecommunication', code: 'ENTC' },
-  { id: 'elec', name: 'Electrical Engineering', code: 'ELEC' },
-  { id: 'instru', name: 'Instrumentation Engineering', code: 'INSTRU' }
+  { id: 'comp', name: 'Computer Science & Engineering', code: 'CSE', keywords: ['computer', 'cse', 'comp', 'software'] },
+  { id: 'it', name: 'Information Technology', code: 'IT', keywords: ['information', 'it', 'infotech'] },
+  { id: 'aids', name: 'Artificial Intelligence & Data Science', code: 'AI&DS', keywords: ['artificial', 'intelligence', 'data science', 'ai&ds', 'aids', 'ai/ds', 'ai'] },
+  { id: 'entc', name: 'Electronics & Telecommunication', code: 'ENTC', keywords: ['telecommunication', 'entc', 'electronics and telecommunication', 'e&tc', 'extc', 'etc'] },
+  { id: 'elec', name: 'Electrical Engineering', code: 'ELEC', keywords: ['electrical', 'ee', 'elec'] },
+  { id: 'instru', name: 'Instrumentation Engineering', code: 'INSTRU', keywords: ['instrumentation', 'instru', 'inst'] }
 ];
 
 export const DIVISIONS = ['SY-A', 'SY-B', 'SY-C'];
@@ -18,10 +18,9 @@ const initialData = {
     maxDurationMinutes: 10,
     pinRotationSeconds: 10,
     pinToleranceSeconds: 12,
-    adminGatekeeperCode: 'admin', // Gatekeeper passcode to open HOD modal
-    facultyPassword: 'faculty@2026' // Faculty launcher security password
+    adminGatekeeperCode: 'admin',
+    facultyPassword: 'faculty@2026'
   },
-  // Dedicated HOD accounts for all 6 engineering departments
   hodAccounts: {
     comp: { department: 'comp', name: 'HOD Computer Science', password: null, isFirstTime: true },
     it: { department: 'it', name: 'HOD Information Technology', password: null, isFirstTime: true },
