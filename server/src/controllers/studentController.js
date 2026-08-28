@@ -3,23 +3,45 @@ import { PinService } from '../services/pinService.js';
 import { DeviceService } from '../services/deviceService.js';
 
 export class StudentController {
-  // Student Login & Device Binding
   static login(req, res) {
-    const { rollNo, prn, division = 'SY-A', deviceId, fingerprint } = req.body;
+    const { rollNo, prn, name, idCardPhoto, department = 'comp', division = 'SY-A', deviceId, fingerprint } = req.body;
     if (!rollNo) {
       return res.status(400).json({ success: false, error: 'Roll Number is required' });
     }
 
     const students = db.get('students');
-    const student = students.find(
-      s => s.rollNo === Number(rollNo) && s.division === division && (!prn || s.prn === String(prn))
+    const numericRoll = Number(rollNo);
+    
+    let student = students.find(
+      s => s.rollNo === numericRoll && s.division === division && (s.department === department || !s.department)
     );
 
+    const resolvedName = name && String(name).trim() ? String(name).trim() : `Student #${numericRoll}`;
+    const cleanPrn = prn && String(prn).trim() ? String(prn).trim() : `12251ET${String(numericRoll).padStart(3, '0')}`;
+
     if (!student) {
-      return res.status(404).json({ success: false, error: `Student with Roll No. ${rollNo} not found in ${division}` });
+      student = {
+        id: `S_${department}_${division}_${numericRoll}`,
+        rollNo: numericRoll,
+        prn: cleanPrn,
+        name: resolvedName,
+        idCardPhoto: idCardPhoto || null,
+        department,
+        division,
+        batch: numericRoll <= 20 ? 'B1' : numericRoll <= 40 ? 'B2' : 'B3',
+        boundDeviceId: null,
+        boundFingerprint: null,
+        boundAt: null
+      };
+      students.push(student);
+      db.set('students', students);
+    } else {
+      if (name && String(name).trim()) student.name = String(name).trim();
+      if (prn && String(prn).trim()) student.prn = String(prn).trim();
+      if (idCardPhoto) student.idCardPhoto = idCardPhoto;
+      db.set('students', students);
     }
 
-    // Verify or bind device fingerprint
     const bindResult = DeviceService.verifyOrBindDevice(student.id, student.rollNo, deviceId, fingerprint);
     if (!bindResult.success) {
       return res.status(403).json(bindResult);
@@ -27,22 +49,28 @@ export class StudentController {
 
     res.json({
       success: true,
-      student: bindResult.student,
+      student: {
+        ...bindResult.student,
+        name: student.name,
+        department: student.department || department,
+        prn: student.prn,
+        idCardPhoto: student.idCardPhoto
+      },
       token: `std_tok_${student.id}_${Date.now()}`
     });
   }
 
-  // Get active session for student's division
   static getActiveSession(req, res) {
-    const { division = 'SY-A', studentId } = req.query;
+    const { division = 'SY-A', department = 'comp', studentId } = req.query;
     const sessions = db.get('sessions');
-    const active = sessions.find(s => s.status === 'active' && s.division === division);
+    const active = sessions.find(
+      s => s.status === 'active' && s.division === division && (!s.department || s.department === department)
+    );
 
     if (!active) {
       return res.json({ success: true, hasActiveSession: false });
     }
 
-    // Check if session has timed out
     const now = new Date();
     const endTime = new Date(active.endTime);
     if (now > endTime) {
@@ -64,6 +92,7 @@ export class StudentController {
       session: {
         id: active.id,
         subjectName: active.subjectName,
+        department: active.department,
         division: active.division,
         batch: active.batch,
         remainingSec,
@@ -72,7 +101,6 @@ export class StudentController {
     });
   }
 
-  // Submit PIN for attendance
   static submitPin(req, res) {
     const { studentId, rollNo, sessionId, pin, deviceId, fingerprint } = req.body;
 
@@ -86,7 +114,6 @@ export class StudentController {
       return res.status(400).json({ success: false, error: 'This attendance session has ended or is not active.' });
     }
 
-    // Check session duration time
     const now = new Date();
     if (now > new Date(session.endTime)) {
       session.status = 'closed';
@@ -94,26 +121,22 @@ export class StudentController {
       return res.status(400).json({ success: false, error: 'Attendance window has closed for this lecture.' });
     }
 
-    // Device Verification
     const students = db.get('students');
     const student = students.find(s => s.id === studentId || s.rollNo === Number(rollNo));
     if (!student) {
       return res.status(404).json({ success: false, error: 'Student record not found' });
     }
 
-    // In-Session Device Lock: 1 device cannot submit for multiple roll numbers
     const lockCheck = DeviceService.checkInSessionLock(sessionId, deviceId, student.rollNo);
     if (!lockCheck.allowed) {
       return res.status(403).json({ success: false, error: lockCheck.error });
     }
 
-    // Validate PIN (with 10-12s sliding grace tolerance)
     const pinCheck = PinService.validatePin(sessionId, pin);
     if (!pinCheck.valid) {
       return res.status(400).json({ success: false, error: pinCheck.reason });
     }
 
-    // Check if already marked
     const attendance = db.get('attendance');
     const existing = attendance.find(a => a.sessionId === sessionId && a.studentId === student.id);
     if (existing) {
@@ -125,13 +148,13 @@ export class StudentController {
       });
     }
 
-    // Create attendance record
     const record = {
       id: `ATT_${sessionId}_${student.id}`,
       sessionId: session.id,
       studentId: student.id,
       rollNo: student.rollNo,
       studentName: student.name,
+      department: student.department || session.department,
       division: student.division,
       batch: student.batch,
       subjectId: session.subjectId,
@@ -147,13 +170,7 @@ export class StudentController {
     session.totalPresent = (session.totalPresent || 0) + 1;
     db.set('sessions', sessions);
 
-    // Record device lock for this session
     DeviceService.recordSessionSubmission(sessionId, deviceId, student.rollNo);
-
-    // Broadcast attendance update via WebSocket if available
-    if (req.app.get('io')) {
-      req.app.get('io').to(sessionId).emit('student_attended', record);
-    }
 
     res.json({
       success: true,
@@ -162,7 +179,6 @@ export class StudentController {
     });
   }
 
-  // Student Dashboard Personal Analytics & Defaulter Calculator
   static getDashboard(req, res) {
     const { studentId } = req.params;
     const students = db.get('students');
@@ -174,7 +190,9 @@ export class StudentController {
 
     const sessions = db.get('sessions').filter(s => s.division === student.division);
     const attendance = db.get('attendance').filter(a => a.studentId === student.id);
-    const subjects = db.get('subjects').filter(s => s.division === student.division);
+    const subjects = db.get('subjects').filter(
+      s => s.division === student.division && (!s.department || s.department === student.department)
+    );
 
     const totalLectures = sessions.length;
     const attendedLectures = attendance.length;
@@ -182,14 +200,11 @@ export class StudentController {
       ? Number(((attendedLectures / totalLectures) * 100).toFixed(1))
       : 100.0;
 
-    // Calculate how many more consecutive classes needed to reach 75% if below 75
     let lecturesNeededFor75 = 0;
     if (overallPercentage < 75.0 && totalLectures > 0) {
-      // (attended + x) / (total + x) >= 0.75 => x >= (0.75 * total - attended) / 0.25
       lecturesNeededFor75 = Math.max(0, Math.ceil((0.75 * totalLectures - attendedLectures) / 0.25));
     }
 
-    // Subject-wise stats
     const subjectStats = subjects.map(sub => {
       const subSessions = sessions.filter(s => s.subjectId === sub.id);
       const subAttended = attendance.filter(a => a.subjectId === sub.id);
@@ -209,7 +224,6 @@ export class StudentController {
       };
     });
 
-    // Recent 10 history logs
     const history = attendance
       .slice(-10)
       .reverse()
@@ -229,6 +243,8 @@ export class StudentController {
           rollNo: student.rollNo,
           prn: student.prn,
           name: student.name,
+          idCardPhoto: student.idCardPhoto,
+          department: student.department,
           division: student.division,
           batch: student.batch
         },

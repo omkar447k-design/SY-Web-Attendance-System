@@ -4,7 +4,7 @@ import { DeviceService } from '../services/deviceService.js';
 
 export class StudentController {
   static login(req, res) {
-    const { rollNo, prn, department = 'comp', division = 'SY-A', deviceId, fingerprint } = req.body;
+    const { rollNo, prn, name, idCardPhoto, department = 'comp', division = 'SY-A', deviceId, fingerprint } = req.body;
     if (!rollNo) {
       return res.status(400).json({ success: false, error: 'Roll Number is required' });
     }
@@ -17,14 +17,16 @@ export class StudentController {
       s => s.rollNo === numericRoll && s.division === division && (s.department === department || !s.department)
     );
 
+    const resolvedName = name && String(name).trim() ? String(name).trim() : `Student #${numericRoll}`;
+    const cleanPrn = prn && String(prn).trim() ? String(prn).trim() : `12251ET${String(numericRoll).padStart(3, '0')}`;
+
     if (!student) {
-      // Auto-register student dynamically for this department & division
-      const cleanPrn = prn && String(prn).trim() ? String(prn).trim() : `12251ET${String(numericRoll).padStart(3, '0')}`;
       student = {
         id: `S_${department}_${division}_${numericRoll}`,
         rollNo: numericRoll,
         prn: cleanPrn,
-        name: `Student #${numericRoll}`,
+        name: resolvedName,
+        idCardPhoto: idCardPhoto || null,
         department,
         division,
         batch: numericRoll <= 20 ? 'B1' : numericRoll <= 40 ? 'B2' : 'B3',
@@ -34,8 +36,11 @@ export class StudentController {
       };
       students.push(student);
       db.set('students', students);
-    } else if (prn && String(prn).trim()) {
-      student.prn = String(prn).trim();
+    } else {
+      // Update name, PRN, and ID photo if newly recognized or provided
+      if (name && String(name).trim()) student.name = String(name).trim();
+      if (prn && String(prn).trim()) student.prn = String(prn).trim();
+      if (idCardPhoto) student.idCardPhoto = idCardPhoto;
       db.set('students', students);
     }
 
@@ -48,8 +53,10 @@ export class StudentController {
       success: true,
       student: {
         ...bindResult.student,
+        name: student.name,
         department: student.department || department,
-        prn: student.prn
+        prn: student.prn,
+        idCardPhoto: student.idCardPhoto
       },
       token: `std_tok_${student.id}_${Date.now()}`
     });
@@ -238,6 +245,7 @@ export class StudentController {
           rollNo: student.rollNo,
           prn: student.prn,
           name: student.name,
+          idCardPhoto: student.idCardPhoto,
           department: student.department,
           division: student.division,
           batch: student.batch

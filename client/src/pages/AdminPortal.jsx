@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Shield, Users, Settings, AlertTriangle, Download, RefreshCw, UserPlus, Unlock, Search, BookOpen, Key, Building2 } from 'lucide-react';
+import { Shield, Users, Settings, AlertTriangle, Download, RefreshCw, UserPlus, Unlock, Search, BookOpen, Key, Building2, ImageIcon } from 'lucide-react';
 import { api } from '../services/api';
 
 const DEPARTMENTS = [
@@ -22,6 +22,9 @@ export function AdminPortal() {
   const [departmentFilter, setDepartmentFilter] = useState('comp');
   const [divisionFilter, setDivisionFilter] = useState('SY-A');
   const [loading, setLoading] = useState(true);
+
+  // Selected ID Photo Modal
+  const [selectedPhoto, setSelectedPhoto] = useState(null);
 
   // New Student Form state
   const [showAddModal, setShowAddModal] = useState(false);
@@ -314,7 +317,7 @@ export function AdminPortal() {
         </div>
       )}
 
-      {/* TAB 3: STUDENT ROSTER & DEVICE RESET */}
+      {/* TAB 3: STUDENT ROSTER & ID VERIFICATION */}
       {activeTab === 'roster' && (
         <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pb-3 border-b border-slate-200">
@@ -368,6 +371,7 @@ export function AdminPortal() {
                   <th className="py-3 px-3">Roll No</th>
                   <th className="py-3 px-3">PRN</th>
                   <th className="py-3 px-3">Student Name</th>
+                  <th className="py-3 px-3">ID Card</th>
                   <th className="py-3 px-3">Batch</th>
                   <th className="py-3 px-3">Attendance</th>
                   <th className="py-3 px-3">Device Lock</th>
@@ -380,6 +384,20 @@ export function AdminPortal() {
                     <td className="py-3 px-3 font-extrabold text-slate-900">#{student.rollNo}</td>
                     <td className="py-3 px-3 text-slate-500">{student.prn}</td>
                     <td className="py-3 px-3 font-bold text-slate-900">{student.name}</td>
+                    <td className="py-3 px-3">
+                      {student.idCardPhoto ? (
+                        <button
+                          onClick={() => setSelectedPhoto(student.idCardPhoto)}
+                          className="flex items-center space-x-1 text-xs text-indigo-600 hover:text-indigo-800 font-bold"
+                          title="View Verified ID Card"
+                        >
+                          <img src={student.idCardPhoto} alt="ID" className="w-6 h-6 rounded object-cover border border-slate-300" />
+                          <span>View ID</span>
+                        </button>
+                      ) : (
+                        <span className="text-slate-400 text-xs">-</span>
+                      )}
+                    </td>
                     <td className="py-3 px-3">{student.batch}</td>
                     <td className="py-3 px-3 font-bold">
                       <span className={student.isDefaulter ? 'text-rose-600' : 'text-emerald-600'}>
@@ -405,7 +423,7 @@ export function AdminPortal() {
                           title="Reset Device if student lost phone"
                         >
                           <Unlock className="w-3 h-3 inline mr-1" />
-                          Reset Device
+                          Reset
                         </button>
                       )}
                     </td>
@@ -527,6 +545,22 @@ export function AdminPortal() {
             </div>
           </div>
 
+        </div>
+      )}
+
+      {/* ID CARD PHOTO MODAL */}
+      {selectedPhoto && (
+        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 rounded-3xl p-6 max-w-sm w-full shadow-2xl text-center">
+            <h3 className="text-base font-extrabold text-slate-900 mb-3">Student Verified ID Card</h3>
+            <img src={selectedPhoto} alt="Student ID" className="w-full rounded-2xl border border-slate-200 shadow-md mb-4" />
+            <button
+              onClick={() => setSelectedPhoto(null)}
+              className="w-full py-2.5 rounded-xl bg-slate-800 text-white font-bold text-xs"
+            >
+              Close
+            </button>
+          </div>
         </div>
       )}
 
