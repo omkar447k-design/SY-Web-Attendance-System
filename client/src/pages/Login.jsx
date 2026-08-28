@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { GraduationCap, Users, Shield, ArrowRight, Smartphone, Lock, X, Building2, Camera, Upload, CheckCircle2, Image as ImageIcon, Sparkles, AlertCircle } from 'lucide-react';
+import { GraduationCap, Users, Shield, ArrowRight, Smartphone, Lock, X, Building2, Camera, CheckCircle2, Sparkles, User, BookOpen, CheckSquare, Square } from 'lucide-react';
 import { createWorker } from 'tesseract.js';
 import { api } from '../services/api';
 import { getDeviceIdentity } from '../services/fingerprint';
@@ -15,12 +15,19 @@ const DEPARTMENTS = [
 
 const DIVISIONS = ['SY-A', 'SY-B', 'SY-C'];
 
-// Intelligent Name Extraction from ID card OCR text
+const DEFAULT_SUBJECTS = {
+  comp: ['Operating Systems (CS201)', 'Database Management Systems (CS202)', 'Computer Networks (CS203)', 'OS Practical Lab', 'DBMS Lab'],
+  it: ['Data Structures & Algorithms (IT201)', 'Object Oriented Programming (IT202)', 'Web Technologies (IT203)', 'DSA Lab'],
+  aids: ['Machine Learning Foundations (AI201)', 'Python for Data Science (AI202)', 'Applied Statistics (AI203)', 'AI Lab'],
+  entc: ['Digital Signal Processing (ET201)', 'Microcontrollers & Embedded Systems (ET202)', 'Analog Circuits (ET203)', 'DSP Lab'],
+  elec: ['Power Systems & Machines (EE201)', 'Control Systems Engineering (EE202)', 'Power Electronics (EE203)', 'Machines Lab'],
+  instru: ['Sensors & Transducers (IN201)', 'Industrial Instrumentation (IN202)', 'Process Control (IN203)', 'Instrumentation Lab']
+};
+
 function extractStudentNameFromOCR(rawText) {
   if (!rawText) return '';
   const lines = rawText.split('\n').map(l => l.trim()).filter(Boolean);
 
-  // 1. Look for explicit Name: or Student Name: prefixes
   for (const line of lines) {
     const nameMatch = line.match(/(?:student\s*name|name|full\s*name)\s*[:\-\. ]+\s*([a-zA-Z\s\.]{3,35})/i);
     if (nameMatch && nameMatch[1]) {
@@ -31,12 +38,9 @@ function extractStudentNameFromOCR(rawText) {
     }
   }
 
-  // 2. Fallback: Search for lines that look like a 2 or 3 word person name
   for (const line of lines) {
     const clean = line.replace(/[^a-zA-Z\s]/g, '').trim();
     const words = clean.split(/\s+/).filter(w => w.length >= 2);
-    
-    // Check if it's 2 or 3 words (e.g. "Omkar Pawar" or "Sanket Ashok Bhosale")
     if (words.length >= 2 && words.length <= 4 && clean.length >= 5 && clean.length <= 35) {
       const isBlacklisted = /college|institute|department|university|engineering|technology|identity|card|branch|division|semester|academic|year|valid|holder|signature/i.test(clean);
       if (!isBlacklisted) {
@@ -57,7 +61,6 @@ function toTitleCase(str) {
     .join(' ');
 }
 
-// Compress image to lightweight base64 thumbnail (<30 KB)
 function compressImage(file) {
   return new Promise((resolve) => {
     const reader = new FileReader();
@@ -107,9 +110,13 @@ export function Login({ onLoginSuccess }) {
   const [ocrSuccessMsg, setOcrSuccessMsg] = useState('');
   const fileInputRef = useRef(null);
 
-  // Teacher form state
+  // Teacher dynamic form state with Multi-Division Checkboxes
+  const [teacherName, setTeacherName] = useState('Dr. A. K. Sharma');
   const [teacherDept, setTeacherDept] = useState('comp');
-  const [teacherId, setTeacherId] = useState('T101');
+  const [selectedDivisions, setSelectedDivisions] = useState(['SY-A']); // Multi-select array e.g. ['SY-A', 'SY-B']
+  const [teacherSubject, setTeacherSubject] = useState(DEFAULT_SUBJECTS['comp'][0]);
+  const [customSubject, setCustomSubject] = useState('');
+  const [teacherBatch, setTeacherBatch] = useState('All');
 
   // Secret Admin modal state
   const [showAdminModal, setShowAdminModal] = useState(false);
@@ -126,6 +133,25 @@ export function Login({ onLoginSuccess }) {
     }
   }, []);
 
+  const handleTeacherDeptChange = (newDept) => {
+    setTeacherDept(newDept);
+    const subList = DEFAULT_SUBJECTS[newDept] || [];
+    if (subList.length > 0) {
+      setTeacherSubject(subList[0]);
+    }
+  };
+
+  const toggleDivisionSelection = (div) => {
+    if (selectedDivisions.includes(div)) {
+      // Don't allow unselecting if it's the only one
+      if (selectedDivisions.length > 1) {
+        setSelectedDivisions(selectedDivisions.filter(d => d !== div));
+      }
+    } else {
+      setSelectedDivisions([...selectedDivisions, div]);
+    }
+  };
+
   const handleIdCardSelected = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -137,7 +163,6 @@ export function Login({ onLoginSuccess }) {
     setOcrStatusText('Preparing ID image for high-speed scanning...');
 
     try {
-      // Compress image for fast OCR & compact storage
       const compressedDataUrl = await compressImage(file);
       setIdCardPreview(compressedDataUrl);
 
@@ -159,7 +184,7 @@ export function Login({ onLoginSuccess }) {
         setName(detectedName);
         setOcrSuccessMsg(`✅ AI detected Name: "${detectedName}"`);
       } else {
-        setOcrSuccessMsg('📷 ID photo uploaded. Please verify/type your name below if needed.');
+        setOcrSuccessMsg('📷 ID photo attached. Please enter your name below.');
       }
     } catch (err) {
       console.error('OCR Error:', err);
@@ -206,12 +231,25 @@ export function Login({ onLoginSuccess }) {
 
   const handleTeacherLogin = async (e) => {
     e.preventDefault();
+    if (!teacherName.trim()) return setError('Please enter Faculty Name');
+    if (selectedDivisions.length === 0) return setError('Please select at least one Division (SY-A, SY-B, or SY-C)');
+    const finalSubject = customSubject.trim() ? customSubject.trim() : teacherSubject;
+    if (!finalSubject) return setError('Please select or type a subject');
+
     setError('');
     setLoading(true);
     try {
-      const teachers = await api.getTeachers();
-      const teacher = teachers.data.find(t => t.id === teacherId) || { id: teacherId, name: 'Faculty Member', department: teacherDept };
-      onLoginSuccess('teacher', teacher);
+      const teacherProfile = {
+        id: `T_${teacherDept}_${Date.now()}`,
+        name: teacherName.trim(),
+        department: teacherDept,
+        divisions: selectedDivisions,
+        division: selectedDivisions.join(', '),
+        subjectName: finalSubject,
+        batch: teacherBatch,
+        role: 'teacher'
+      };
+      onLoginSuccess('teacher', teacherProfile);
     } catch (err) {
       setError(err.message || 'Teacher login failed');
     } finally {
@@ -368,7 +406,7 @@ export function Login({ onLoginSuccess }) {
                 </div>
               </div>
 
-              {/* ID CARD UPLOAD & OCR NAME RECOGNITION (Supports iOS Camera/Gallery & Android) */}
+              {/* ID CARD UPLOAD & OCR NAME RECOGNITION */}
               <div className="pt-2">
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center justify-between">
                   <span className="flex items-center space-x-1.5">
@@ -378,7 +416,6 @@ export function Login({ onLoginSuccess }) {
                   <span className="text-[10px] text-slate-400 font-normal normal-case">Camera & Gallery (iOS & Android)</span>
                 </label>
 
-                {/* Hidden Native File Input (Triggers iOS Action Sheet & Android Chooser) */}
                 <input
                   type="file"
                   ref={fileInputRef}
@@ -458,7 +495,7 @@ export function Login({ onLoginSuccess }) {
                 )}
               </div>
 
-              {/* Student Name Input (Auto-filled from ID card OCR or manual) */}
+              {/* Student Name Input */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center justify-between">
                   <span>Student Full Name</span>
@@ -494,16 +531,35 @@ export function Login({ onLoginSuccess }) {
             </form>
           )}
 
-          {/* TEACHER / FACULTY TAB */}
+          {/* TEACHER / FACULTY TAB (Name, Department, Subject, and Multi-Division Checkboxes) */}
           {activeTab === 'teacher' && (
             <form onSubmit={handleTeacherLogin} className="space-y-4">
+              
+              {/* Faculty Full Name */}
               <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                  Department
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center space-x-1.5">
+                  <User className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>Faculty / Professor Name</span>
+                </label>
+                <input
+                  type="text"
+                  value={teacherName}
+                  onChange={(e) => setTeacherName(e.target.value)}
+                  placeholder="e.g. Dr. A. K. Sharma"
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 font-bold focus:border-indigo-600 focus:bg-white outline-none"
+                  required
+                />
+              </div>
+
+              {/* Department Dropdown */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center space-x-1.5">
+                  <Building2 className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>Select Department</span>
                 </label>
                 <select
                   value={teacherDept}
-                  onChange={(e) => setTeacherDept(e.target.value)}
+                  onChange={(e) => handleTeacherDeptChange(e.target.value)}
                   className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 font-semibold focus:border-indigo-600 outline-none"
                 >
                   {DEPARTMENTS.map((dept) => (
@@ -514,21 +570,93 @@ export function Login({ onLoginSuccess }) {
                 </select>
               </div>
 
+              {/* MULTI-DIVISION CHECKBOXES (SY-A, SY-B, SY-C - Select 1 or Multiple!) */}
               <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                  Select Faculty Profile
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
+                    Select Class / Division(s)
+                  </label>
+                  <span className="text-[11px] text-indigo-600 font-bold">
+                    {selectedDivisions.length > 1 ? `Combined (${selectedDivisions.join(' + ')})` : 'Single Class'}
+                  </span>
+                </div>
+                
+                <div className="grid grid-cols-3 gap-2">
+                  {DIVISIONS.map((div) => {
+                    const isChecked = selectedDivisions.includes(div);
+                    return (
+                      <button
+                        key={div}
+                        type="button"
+                        onClick={() => toggleDivisionSelection(div)}
+                        className={`py-2.5 px-3 rounded-xl text-xs sm:text-sm font-extrabold border transition-all flex items-center justify-center space-x-1.5 ${
+                          isChecked
+                            ? 'bg-indigo-600 text-white border-indigo-600 shadow-md shadow-indigo-100'
+                            : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                        }`}
+                      >
+                        {isChecked ? (
+                          <CheckSquare className="w-4 h-4 text-white" />
+                        ) : (
+                          <Square className="w-4 h-4 text-slate-400" />
+                        )}
+                        <span>{div}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-[11px] text-slate-500 mt-1">
+                  💡 Tip: You can tick multiple divisions (e.g. SY-A and SY-B) for combined lectures!
+                </p>
+              </div>
+
+              {/* Subject Selection / Custom Subject */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center space-x-1.5">
+                  <BookOpen className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>Select Subject / Lecture</span>
                 </label>
                 <select
-                  value={teacherId}
-                  onChange={(e) => setTeacherId(e.target.value)}
+                  value={teacherSubject}
+                  onChange={(e) => {
+                    setTeacherSubject(e.target.value);
+                    if (e.target.value !== 'other') setCustomSubject('');
+                  }}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 font-semibold focus:border-indigo-600 outline-none mb-2"
+                >
+                  {(DEFAULT_SUBJECTS[teacherDept] || []).map((sub, idx) => (
+                    <option key={idx} value={sub}>{sub}</option>
+                  ))}
+                  <option value="other">➕ Enter Custom Subject / Lab...</option>
+                </select>
+
+                {teacherSubject === 'other' && (
+                  <input
+                    type="text"
+                    value={customSubject}
+                    onChange={(e) => setCustomSubject(e.target.value)}
+                    placeholder="Type subject name (e.g. Cloud Computing Lab)"
+                    className="w-full bg-slate-50 border border-indigo-400 rounded-xl px-3.5 py-2 text-sm text-slate-900 focus:bg-white outline-none"
+                    autoFocus
+                    required
+                  />
+                )}
+              </div>
+
+              {/* Batch Selection */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                  Lecture Type / Batch
+                </label>
+                <select
+                  value={teacherBatch}
+                  onChange={(e) => setTeacherBatch(e.target.value)}
                   className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 font-semibold focus:border-indigo-600 outline-none"
                 >
-                  <option value="T101">Dr. A. K. Sharma (Computer Science)</option>
-                  <option value="T102">Prof. S. R. Patil (Information Technology)</option>
-                  <option value="T103">Prof. N. V. Deshmukh (AI & Data Science)</option>
-                  <option value="T104">Prof. V. M. Kulkarni (ENTC)</option>
-                  <option value="T105">Prof. P. R. Joshi (Electrical)</option>
-                  <option value="T106">Prof. M. S. Shinde (Instrumentation)</option>
+                  <option value="All">All Batches (Theory Lecture)</option>
+                  <option value="B1">Batch B1 (Practical Lab)</option>
+                  <option value="B2">Batch B2 (Practical Lab)</option>
+                  <option value="B3">Batch B3 (Practical Lab)</option>
                 </select>
               </div>
 

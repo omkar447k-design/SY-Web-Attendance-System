@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Play, Plus, Square, Download, Users, Clock, CheckCircle, RefreshCw, UserPlus, Building2 } from 'lucide-react';
+import { Play, Plus, Square, Download, Users, Clock, CheckCircle, RefreshCw, UserPlus, Building2, CheckSquare, Square as SquareIcon } from 'lucide-react';
 import { api, getSocket } from '../services/api';
 import { TimerRing } from '../components/TimerRing';
 
@@ -12,37 +12,43 @@ const DEPARTMENTS = [
   { id: 'instru', name: 'Instrumentation Engineering', code: 'INSTRU' }
 ];
 
+const DIVISIONS = ['SY-A', 'SY-B', 'SY-C'];
+
+const DEFAULT_SUBJECTS = {
+  comp: ['Operating Systems (CS201)', 'Database Management Systems (CS202)', 'Computer Networks (CS203)', 'OS Practical Lab', 'DBMS Lab'],
+  it: ['Data Structures & Algorithms (IT201)', 'Object Oriented Programming (IT202)', 'Web Technologies (IT203)', 'DSA Lab'],
+  aids: ['Machine Learning Foundations (AI201)', 'Python for Data Science (AI202)', 'Applied Statistics (AI203)', 'AI Lab'],
+  entc: ['Digital Signal Processing (ET201)', 'Microcontrollers & Embedded Systems (ET202)', 'Analog Circuits (ET203)', 'DSP Lab'],
+  elec: ['Power Systems & Machines (EE201)', 'Control Systems Engineering (EE202)', 'Power Electronics (EE203)', 'Machines Lab'],
+  instru: ['Sensors & Transducers (IN201)', 'Industrial Instrumentation (IN202)', 'Process Control (IN203)', 'Instrumentation Lab']
+};
+
 export function TeacherPortal({ teacher }) {
-  const [subjects, setSubjects] = useState([]);
   const [activeSession, setActiveSession] = useState(null);
-  const [selectedSubjectId, setSelectedSubjectId] = useState('');
+  const [teacherName, setTeacherName] = useState(teacher.name || 'Faculty Member');
   const [department, setDepartment] = useState(teacher.department || 'comp');
-  const [division, setDivision] = useState('SY-A');
-  const [batch, setBatch] = useState('All');
+  const [selectedDivisions, setSelectedDivisions] = useState(teacher.divisions || ['SY-A']);
+  const [selectedSubject, setSelectedSubject] = useState(teacher.subjectName || DEFAULT_SUBJECTS['comp'][0]);
+  const [customSubject, setCustomSubject] = useState('');
+  const [batch, setBatch] = useState(teacher.batch || 'All');
   const [durationMinutes, setDurationMinutes] = useState(3);
   const [loading, setLoading] = useState(false);
   const [manualRollNo, setManualRollNo] = useState('');
 
-  useEffect(() => {
-    async function loadData() {
-      try {
-        const subRes = await api.getSubjects();
-        if (subRes.success) {
-          const deptSubs = subRes.data.filter(s => !s.department || s.department === department);
-          setSubjects(deptSubs.length > 0 ? deptSubs : subRes.data);
-          if (deptSubs.length > 0) setSelectedSubjectId(deptSubs[0].id);
-        }
-
-        const sessRes = await api.getTeacherActiveSession(teacher.id);
-        if (sessRes.success && sessRes.active) {
-          setActiveSession(sessRes.session);
-        }
-      } catch (err) {
-        console.error('Error loading teacher portal:', err);
+  const loadActiveSession = async () => {
+    try {
+      const sessRes = await api.getTeacherActiveSession(teacher.id);
+      if (sessRes.success && sessRes.active) {
+        setActiveSession(sessRes.session);
       }
+    } catch (err) {
+      console.error('Error loading teacher portal session:', err);
     }
-    loadData();
-  }, [teacher.id, department]);
+  };
+
+  useEffect(() => {
+    loadActiveSession();
+  }, [teacher.id]);
 
   useEffect(() => {
     const socket = getSocket();
@@ -78,17 +84,29 @@ export function TeacherPortal({ teacher }) {
     };
   }, [activeSession?.id]);
 
+  const toggleDivision = (div) => {
+    if (selectedDivisions.includes(div)) {
+      if (selectedDivisions.length > 1) {
+        setSelectedDivisions(selectedDivisions.filter(d => d !== div));
+      }
+    } else {
+      setSelectedDivisions([...selectedDivisions, div]);
+    }
+  };
+
   const handleStartSession = async (e) => {
     e.preventDefault();
-    if (!selectedSubjectId) return;
+    const finalSubject = customSubject.trim() ? customSubject.trim() : selectedSubject;
+    if (!finalSubject) return alert('Please enter a subject');
     setLoading(true);
 
     try {
       const res = await api.startSession({
         teacherId: teacher.id,
-        subjectId: selectedSubjectId,
+        teacherName: teacherName.trim(),
+        subjectName: finalSubject,
         department,
-        division,
+        divisions: selectedDivisions,
         batch,
         durationMinutes: Number(durationMinutes)
       });
@@ -142,8 +160,7 @@ export function TeacherPortal({ teacher }) {
       const res = await api.manualMarkAttendance(activeSession.id, manualRollNo);
       if (res.success) {
         setManualRollNo('');
-        const sessRes = await api.getTeacherActiveSession(teacher.id);
-        if (sessRes.success && sessRes.active) setActiveSession(sessRes.session);
+        loadActiveSession();
       }
     } catch (err) {
       alert(err.message || 'Could not mark student');
@@ -156,6 +173,8 @@ export function TeacherPortal({ teacher }) {
     return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
   };
 
+  const deptObj = DEPARTMENTS.find(d => d.id === department);
+
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-6">
       
@@ -163,10 +182,10 @@ export function TeacherPortal({ teacher }) {
       <div className="bg-white border border-slate-200 rounded-3xl p-5 sm:p-6 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <span className="text-xs font-bold uppercase tracking-wider text-indigo-600">Faculty In-Charge</span>
-          <h2 className="text-xl sm:text-2xl font-extrabold text-slate-900">{teacher.name}</h2>
+          <h2 className="text-xl sm:text-2xl font-extrabold text-slate-900">{teacherName}</h2>
           <p className="text-xs text-slate-500 mt-0.5 font-medium flex items-center space-x-1.5">
             <Building2 className="w-3.5 h-3.5 text-indigo-500" />
-            <span>Engineering Department • SY Lecture Portal</span>
+            <span>{deptObj?.name || 'Computer Science'} • SY Lecture Portal</span>
           </p>
         </div>
 
@@ -201,7 +220,7 @@ export function TeacherPortal({ teacher }) {
                 {activeSession.subjectName}
               </h1>
               <p className="text-slate-300 text-sm mt-1">
-                Division: <span className="text-indigo-300 font-bold text-base">{activeSession.division}</span>
+                Class / Divisions: <span className="text-indigo-300 font-extrabold text-base bg-indigo-950/80 px-2.5 py-0.5 rounded-lg border border-indigo-500/40">{activeSession.division}</span>
                 {activeSession.batch !== 'All' ? ` • Batch: ${activeSession.batch}` : ''}
               </p>
 
@@ -275,10 +294,10 @@ export function TeacherPortal({ teacher }) {
                 <span className="text-xs font-extrabold uppercase tracking-wider text-slate-400">Total Verified Present</span>
                 <div className="text-5xl font-black text-emerald-400 mt-1">
                   {activeSession.totalPresent || 0}
-                  <span className="text-lg text-slate-500 font-bold"> / {activeSession.totalStudents || 30}</span>
+                  <span className="text-lg text-slate-500 font-bold"> / {activeSession.totalStudents || 60}</span>
                 </div>
                 <div className="text-xs text-slate-400 mt-1">
-                  {((((activeSession.totalPresent || 0) / (activeSession.totalStudents || 1)) * 100).toFixed(0))}% of Division Present
+                  Target: Divisions <span className="text-indigo-300 font-bold">{activeSession.division}</span>
                 </div>
               </div>
 
@@ -326,7 +345,7 @@ export function TeacherPortal({ teacher }) {
                   </div>
                   <div className="overflow-hidden">
                     <p className="font-bold text-white text-xs truncate">{att.studentName}</p>
-                    <p className="text-[10px] text-slate-400">{new Date(att.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</p>
+                    <p className="text-[10px] text-indigo-300">{att.division} • {new Date(att.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
                   </div>
                 </div>
               ))}
@@ -335,7 +354,7 @@ export function TeacherPortal({ teacher }) {
 
         </div>
       ) : (
-        /* LAUNCH NEW SESSION FORM */
+        /* LAUNCH NEW SESSION FORM WITH MULTI-DIVISION CHECKBOXES */
         <div className="bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 shadow-sm max-w-2xl mx-auto">
           <div className="text-center mb-6">
             <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center mx-auto mb-3 border border-indigo-100">
@@ -346,13 +365,19 @@ export function TeacherPortal({ teacher }) {
           </div>
 
           <form onSubmit={handleStartSession} className="space-y-4">
+            
+            {/* Department Selection */}
             <div>
               <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
                 Department
               </label>
               <select
                 value={department}
-                onChange={(e) => setDepartment(e.target.value)}
+                onChange={(e) => {
+                  setDepartment(e.target.value);
+                  const subList = DEFAULT_SUBJECTS[e.target.value] || [];
+                  if (subList.length > 0) setSelectedSubject(subList[0]);
+                }}
                 className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 font-semibold focus:border-indigo-600 outline-none"
               >
                 {DEPARTMENTS.map(d => (
@@ -361,57 +386,96 @@ export function TeacherPortal({ teacher }) {
               </select>
             </div>
 
+            {/* MULTI-DIVISION CHECKBOXES (Tick 1, 2, or 3 divisions!) */}
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
+                  Target Class / Division(s)
+                </label>
+                <span className="text-[11px] text-indigo-600 font-bold">
+                  {selectedDivisions.length > 1 ? `Combined (${selectedDivisions.join(' + ')})` : 'Single Division'}
+                </span>
+              </div>
+              
+              <div className="grid grid-cols-3 gap-2">
+                {DIVISIONS.map(div => {
+                  const isChecked = selectedDivisions.includes(div);
+                  return (
+                    <button
+                      key={div}
+                      type="button"
+                      onClick={() => toggleDivision(div)}
+                      className={`py-2.5 px-3 rounded-xl text-xs sm:text-sm font-extrabold border transition-all flex items-center justify-center space-x-1.5 ${
+                        isChecked
+                          ? 'bg-indigo-600 text-white border-indigo-600 shadow-md shadow-indigo-100'
+                          : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                      }`}
+                    >
+                      {isChecked ? (
+                        <CheckSquare className="w-4 h-4 text-white" />
+                      ) : (
+                        <SquareIcon className="w-4 h-4 text-slate-400" />
+                      )}
+                      <span>{div}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="text-[11px] text-slate-500 mt-1">
+                💡 Ticking multiple divisions allows students from both classes (e.g. SY-A + SY-B) to mark attendance together!
+              </p>
+            </div>
+
+            {/* Subject Dropdown & Custom Option */}
             <div>
               <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                Select Subject
+                Select Subject / Lecture
               </label>
               <select
-                value={selectedSubjectId}
-                onChange={(e) => setSelectedSubjectId(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 font-semibold focus:border-indigo-600 outline-none"
-                required
+                value={selectedSubject}
+                onChange={(e) => {
+                  setSelectedSubject(e.target.value);
+                  if (e.target.value !== 'other') setCustomSubject('');
+                }}
+                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 font-semibold focus:border-indigo-600 outline-none mb-2"
               >
-                {subjects.map(s => (
-                  <option key={s.id} value={s.id}>
-                    {s.code} - {s.name} ({s.type})
-                  </option>
+                {(DEFAULT_SUBJECTS[department] || []).map((sub, idx) => (
+                  <option key={idx} value={sub}>{sub}</option>
                 ))}
+                <option value="other">➕ Enter Custom Subject / Lab...</option>
+              </select>
+
+              {selectedSubject === 'other' && (
+                <input
+                  type="text"
+                  value={customSubject}
+                  onChange={(e) => setCustomSubject(e.target.value)}
+                  placeholder="Type subject name (e.g. Cloud Computing Lab)"
+                  className="w-full bg-slate-50 border border-indigo-400 rounded-xl px-3.5 py-2 text-sm text-slate-900 focus:bg-white outline-none"
+                  autoFocus
+                  required
+                />
+              )}
+            </div>
+
+            {/* Batch Selection */}
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                Batch
+              </label>
+              <select
+                value={batch}
+                onChange={(e) => setBatch(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 font-semibold focus:border-indigo-600 outline-none"
+              >
+                <option value="All">All Batches (Theory Lecture)</option>
+                <option value="B1">Batch B1 (Practical Lab)</option>
+                <option value="B2">Batch B2 (Practical Lab)</option>
+                <option value="B3">Batch B3 (Practical Lab)</option>
               </select>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                  Division
-                </label>
-                <select
-                  value={division}
-                  onChange={(e) => setDivision(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 font-semibold focus:border-indigo-600 outline-none"
-                >
-                  <option value="SY-A">SY-A</option>
-                  <option value="SY-B">SY-B</option>
-                  <option value="SY-C">SY-C</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                  Batch
-                </label>
-                <select
-                  value={batch}
-                  onChange={(e) => setBatch(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 font-semibold focus:border-indigo-600 outline-none"
-                >
-                  <option value="All">All Batches (Theory)</option>
-                  <option value="B1">Batch B1 (Practical)</option>
-                  <option value="B2">Batch B2 (Practical)</option>
-                  <option value="B3">Batch B3 (Practical)</option>
-                </select>
-              </div>
-            </div>
-
+            {/* Attendance Duration */}
             <div>
               <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
                 Attendance Window Duration

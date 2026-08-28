@@ -3,7 +3,6 @@ import { PinService } from '../services/pinService.js';
 import { ExcelService } from '../services/excelService.js';
 
 export class TeacherController {
-  // Get active session or start a new one
   static getActiveSession(req, res) {
     const { teacherId } = req.query;
     const sessions = db.get('sessions');
@@ -13,7 +12,6 @@ export class TeacherController {
       return res.json({ success: true, active: false });
     }
 
-    // Check if session has exceeded duration
     const now = new Date();
     const endTime = new Date(active.endTime);
     if (now > endTime) {
@@ -24,7 +22,10 @@ export class TeacherController {
 
     const pinInfo = PinService.getCurrentPinInfo(active.id);
     const attendance = db.get('attendance').filter(a => a.sessionId === active.id);
-    const totalStudents = db.get('students').filter(s => s.division === active.division).length;
+    const sessionDivisions = active.divisions || [active.division];
+    const totalStudents = db.get('students').filter(
+      s => (!active.department || s.department === active.department) && sessionDivisions.includes(s.division)
+    ).length;
 
     const remainingSessionMs = Math.max(0, endTime.getTime() - now.getTime());
     const remainingSessionSec = Math.ceil(remainingSessionMs / 1000);
@@ -34,6 +35,7 @@ export class TeacherController {
       active: true,
       session: {
         ...active,
+        divisions: sessionDivisions,
         remainingSessionSec,
         pinInfo,
         totalPresent: attendance.length,
@@ -43,14 +45,23 @@ export class TeacherController {
     });
   }
 
-  // Start a new Attendance Session
   static startSession(req, res) {
-    const { teacherId, subjectId, division = 'SY-A', batch = 'All', durationMinutes = 3 } = req.body;
-    const subjects = db.get('subjects');
-    const subject = subjects.find(s => s.id === subjectId) || { name: 'Class Lecture', id: subjectId };
+    const {
+      teacherId,
+      teacherName,
+      subjectId,
+      subjectName,
+      department = 'comp',
+      divisions = ['SY-A'],
+      division = 'SY-A',
+      batch = 'All',
+      durationMinutes = 3
+    } = req.body;
+
+    const effectiveDivisions = Array.isArray(divisions) && divisions.length > 0 ? divisions : [division];
+    const effectiveSubjectName = subjectName || 'Class Lecture';
 
     const sessions = db.get('sessions');
-    // Close any previous active session for this teacher
     sessions.forEach(s => {
       if (s.teacherId === teacherId && s.status === 'active') {
         s.status = 'closed';
@@ -65,10 +76,13 @@ export class TeacherController {
 
     const newSession = {
       id: sessionId,
-      teacherId: teacherId || 'T101',
-      subjectId: subject.id,
-      subjectName: subject.name,
-      division,
+      teacherId: teacherId || `T_${department}_${Date.now()}`,
+      teacherName: teacherName || 'Faculty In-Charge',
+      subjectId: subjectId || `SUB_${Date.now()}`,
+      subjectName: effectiveSubjectName,
+      department,
+      divisions: effectiveDivisions,
+      division: effectiveDivisions.join(', '),
       batch,
       date: startTime.toISOString().split('T')[0],
       startTime: startTime.toISOString(),
@@ -82,6 +96,9 @@ export class TeacherController {
     db.set('sessions', sessions);
 
     const pinInfo = PinService.getCurrentPinInfo(sessionId);
+    const totalStudents = db.get('students').filter(
+      s => (!department || s.department === department) && effectiveDivisions.includes(s.division)
+    ).length;
 
     res.json({
       success: true,
@@ -90,13 +107,12 @@ export class TeacherController {
         remainingSessionSec: effectiveDuration * 60,
         pinInfo,
         totalPresent: 0,
-        totalStudents: db.get('students').filter(s => s.division === division).length,
+        totalStudents,
         attendees: []
       }
     });
   }
 
-  // Extend active session duration (+1 or +2 mins)
   static extendSession(req, res) {
     const { sessionId, extraMinutes = 1 } = req.body;
     const sessions = db.get('sessions');
@@ -117,7 +133,6 @@ export class TeacherController {
     res.json({ success: true, remainingSessionSec, session });
   }
 
-  // End active session
   static endSession(req, res) {
     const { sessionId } = req.body;
     const sessions = db.get('sessions');
@@ -138,16 +153,17 @@ export class TeacherController {
     res.json({ success: true, message: 'Session closed successfully', totalPresent: attendance.length });
   }
 
-  // Manual Attendance Override (e.g. for phone battery dead)
   static manualMark(req, res) {
-    const { sessionId, studentId } = req.body;
+    const { sessionId, studentId, rollNo } = req.body;
     const sessions = db.get('sessions');
     const session = sessions.find(s => s.id === sessionId);
     if (!session) return res.status(404).json({ success: false, error: 'Session not found' });
 
     const students = db.get('students');
-    const student = students.find(s => s.id === studentId || s.rollNo === Number(studentId));
-    if (!student) return res.status(404).json({ success: false, error: 'Student not found' });
+    const student = students.find(
+      s => s.id === studentId || s.rollNo === Number(rollNo || studentId)
+    );
+    if (!student) return res.status(404).json({ success: false, error: 'Student record not found in roster' });
 
     const attendance = db.get('attendance');
     const alreadyMarked = attendance.find(a => a.sessionId === sessionId && a.studentId === student.id);
@@ -161,6 +177,7 @@ export class TeacherController {
       studentId: student.id,
       rollNo: student.rollNo,
       studentName: student.name,
+      department: student.department || session.department,
       division: student.division,
       batch: student.batch,
       subjectId: session.subjectId,
@@ -179,7 +196,6 @@ export class TeacherController {
     res.json({ success: true, data: record });
   }
 
-  // Export Session Excel
   static exportSessionExcel(req, res) {
     const { sessionId } = req.params;
     const sessions = db.get('sessions');

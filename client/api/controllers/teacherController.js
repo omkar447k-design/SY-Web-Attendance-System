@@ -22,7 +22,12 @@ export class TeacherController {
 
     const pinInfo = PinService.getCurrentPinInfo(active.id);
     const attendance = db.get('attendance').filter(a => a.sessionId === active.id);
-    const totalStudents = db.get('students').filter(s => s.division === active.division).length;
+    
+    // Calculate total students across all selected divisions
+    const sessionDivisions = active.divisions || [active.division];
+    const totalStudents = db.get('students').filter(
+      s => (!active.department || s.department === active.department) && sessionDivisions.includes(s.division)
+    ).length;
 
     const remainingSessionMs = Math.max(0, endTime.getTime() - now.getTime());
     const remainingSessionSec = Math.ceil(remainingSessionMs / 1000);
@@ -32,6 +37,7 @@ export class TeacherController {
       active: true,
       session: {
         ...active,
+        divisions: sessionDivisions,
         remainingSessionSec,
         pinInfo,
         totalPresent: attendance.length,
@@ -42,11 +48,23 @@ export class TeacherController {
   }
 
   static startSession(req, res) {
-    const { teacherId, subjectId, division = 'SY-A', batch = 'All', durationMinutes = 3 } = req.body;
-    const subjects = db.get('subjects');
-    const subject = subjects.find(s => s.id === subjectId) || { name: 'Class Lecture', id: subjectId };
+    const {
+      teacherId,
+      teacherName,
+      subjectId,
+      subjectName,
+      department = 'comp',
+      divisions = ['SY-A'],
+      division = 'SY-A',
+      batch = 'All',
+      durationMinutes = 3
+    } = req.body;
+
+    const effectiveDivisions = Array.isArray(divisions) && divisions.length > 0 ? divisions : [division];
+    const effectiveSubjectName = subjectName || 'Class Lecture';
 
     const sessions = db.get('sessions');
+    // Close any previous active sessions for this teacher
     sessions.forEach(s => {
       if (s.teacherId === teacherId && s.status === 'active') {
         s.status = 'closed';
@@ -61,10 +79,13 @@ export class TeacherController {
 
     const newSession = {
       id: sessionId,
-      teacherId: teacherId || 'T101',
-      subjectId: subject.id,
-      subjectName: subject.name,
-      division,
+      teacherId: teacherId || `T_${department}_${Date.now()}`,
+      teacherName: teacherName || 'Faculty In-Charge',
+      subjectId: subjectId || `SUB_${Date.now()}`,
+      subjectName: effectiveSubjectName,
+      department,
+      divisions: effectiveDivisions,
+      division: effectiveDivisions.join(', '),
       batch,
       date: startTime.toISOString().split('T')[0],
       startTime: startTime.toISOString(),
@@ -78,6 +99,9 @@ export class TeacherController {
     db.set('sessions', sessions);
 
     const pinInfo = PinService.getCurrentPinInfo(sessionId);
+    const totalStudents = db.get('students').filter(
+      s => (!department || s.department === department) && effectiveDivisions.includes(s.division)
+    ).length;
 
     res.json({
       success: true,
@@ -86,7 +110,7 @@ export class TeacherController {
         remainingSessionSec: effectiveDuration * 60,
         pinInfo,
         totalPresent: 0,
-        totalStudents: db.get('students').filter(s => s.division === division).length,
+        totalStudents,
         attendees: []
       }
     });
@@ -133,14 +157,16 @@ export class TeacherController {
   }
 
   static manualMark(req, res) {
-    const { sessionId, studentId } = req.body;
+    const { sessionId, studentId, rollNo } = req.body;
     const sessions = db.get('sessions');
     const session = sessions.find(s => s.id === sessionId);
     if (!session) return res.status(404).json({ success: false, error: 'Session not found' });
 
     const students = db.get('students');
-    const student = students.find(s => s.id === studentId || s.rollNo === Number(studentId));
-    if (!student) return res.status(404).json({ success: false, error: 'Student not found' });
+    const student = students.find(
+      s => s.id === studentId || s.rollNo === Number(rollNo || studentId)
+    );
+    if (!student) return res.status(404).json({ success: false, error: 'Student record not found in roster' });
 
     const attendance = db.get('attendance');
     const alreadyMarked = attendance.find(a => a.sessionId === sessionId && a.studentId === student.id);
@@ -154,6 +180,7 @@ export class TeacherController {
       studentId: student.id,
       rollNo: student.rollNo,
       studentName: student.name,
+      department: student.department || session.department,
       division: student.division,
       batch: student.batch,
       subjectId: session.subjectId,

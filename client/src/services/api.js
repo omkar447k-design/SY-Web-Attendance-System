@@ -67,12 +67,12 @@ export const api = {
   startSession: (data) => request('/api/teacher/session/start', { method: 'POST', body: JSON.stringify(data) }),
   extendSession: (sessionId, extraMinutes = 1) => request('/api/teacher/session/extend', { method: 'POST', body: JSON.stringify({ sessionId, extraMinutes }) }),
   endSession: (sessionId) => request('/api/teacher/session/end', { method: 'POST', body: JSON.stringify({ sessionId }) }),
-  manualMarkAttendance: (sessionId, studentId) => request('/api/teacher/session/manual-mark', { method: 'POST', body: JSON.stringify({ sessionId, studentId }) }),
+  manualMarkAttendance: (sessionId, rollNo) => request('/api/teacher/session/manual-mark', { method: 'POST', body: JSON.stringify({ sessionId, rollNo }) }),
   getSessionExcelUrl: (sessionId) => `${API_BASE}/api/teacher/session/${sessionId}/export`,
 
   // Student
   studentLogin: (data) => request('/api/student/login', { method: 'POST', body: JSON.stringify(data) }),
-  getStudentActiveSession: (division, studentId) => request(`/api/student/session/active?division=${division || 'SY-A'}&studentId=${studentId || ''}`),
+  getStudentActiveSession: (division, studentId, department) => request(`/api/student/session/active?division=${division || 'SY-A'}&studentId=${studentId || ''}&department=${department || 'comp'}`),
   submitPin: (data) => request('/api/student/attendance/submit', { method: 'POST', body: JSON.stringify(data) }),
   getStudentDashboard: (studentId) => request(`/api/student/dashboard/${studentId}`)
 };

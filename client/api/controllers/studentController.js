@@ -12,7 +12,6 @@ export class StudentController {
     const students = db.get('students');
     const numericRoll = Number(rollNo);
     
-    // Find existing student or auto-register dynamically
     let student = students.find(
       s => s.rollNo === numericRoll && s.division === division && (s.department === department || !s.department)
     );
@@ -37,7 +36,6 @@ export class StudentController {
       students.push(student);
       db.set('students', students);
     } else {
-      // Update name, PRN, and ID photo if newly recognized or provided
       if (name && String(name).trim()) student.name = String(name).trim();
       if (prn && String(prn).trim()) student.prn = String(prn).trim();
       if (idCardPhoto) student.idCardPhoto = idCardPhoto;
@@ -65,9 +63,14 @@ export class StudentController {
   static getActiveSession(req, res) {
     const { division = 'SY-A', department = 'comp', studentId } = req.query;
     const sessions = db.get('sessions');
-    const active = sessions.find(
-      s => s.status === 'active' && s.division === division && (!s.department || s.department === department)
-    );
+    
+    // Match active session for this student's department AND selected division(s)
+    const active = sessions.find(s => {
+      if (s.status !== 'active') return false;
+      if (s.department && s.department !== department) return false;
+      const sessionDivs = s.divisions || [s.division];
+      return sessionDivs.includes(division) || s.division.includes(division);
+    });
 
     if (!active) {
       return res.json({ success: true, hasActiveSession: false });
@@ -94,8 +97,10 @@ export class StudentController {
       session: {
         id: active.id,
         subjectName: active.subjectName,
+        teacherName: active.teacherName,
         department: active.department,
         division: active.division,
+        divisions: active.divisions || [active.division],
         batch: active.batch,
         remainingSec,
         alreadyMarked
@@ -126,7 +131,16 @@ export class StudentController {
     const students = db.get('students');
     const student = students.find(s => s.id === studentId || s.rollNo === Number(rollNo));
     if (!student) {
-      return res.status(404).json({ success: false, error: 'Student record not found' });
+      return res.status(404).json({ success: false, error: 'Student record not found in roster' });
+    }
+
+    // Check if student belongs to one of the selected divisions
+    const sessionDivs = session.divisions || [session.division];
+    if (!sessionDivs.includes(student.division) && !session.division.includes(student.division)) {
+      return res.status(403).json({
+        success: false,
+        error: `This lecture is only open for Division(s): ${sessionDivs.join(', ')}. Your division is ${student.division}.`
+      });
     }
 
     const lockCheck = DeviceService.checkInSessionLock(sessionId, deviceId, student.rollNo);
@@ -190,10 +204,13 @@ export class StudentController {
       return res.status(404).json({ success: false, error: 'Student not found' });
     }
 
-    const sessions = db.get('sessions').filter(s => s.division === student.division);
+    const sessions = db.get('sessions').filter(s => {
+      const sessionDivs = s.divisions || [s.division];
+      return sessionDivs.includes(student.division) || s.division.includes(student.division);
+    });
     const attendance = db.get('attendance').filter(a => a.studentId === student.id);
     const subjects = db.get('subjects').filter(
-      s => s.division === student.division && (!s.department || s.department === student.department)
+      s => (!s.department || s.department === student.department)
     );
 
     const totalLectures = sessions.length;
@@ -208,8 +225,8 @@ export class StudentController {
     }
 
     const subjectStats = subjects.map(sub => {
-      const subSessions = sessions.filter(s => s.subjectId === sub.id);
-      const subAttended = attendance.filter(a => a.subjectId === sub.id);
+      const subSessions = sessions.filter(s => s.subjectId === sub.id || s.subjectName === sub.name);
+      const subAttended = attendance.filter(a => a.subjectId === sub.id || a.subjectName === sub.name);
       const pct = subSessions.length > 0
         ? Number(((subAttended.length / subSessions.length) * 100).toFixed(1))
         : 100.0;

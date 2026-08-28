@@ -1,4 +1,4 @@
-// Multi-Department & Serverless-Ready Database
+// Multi-Department & Serverless-Ready Database Singleton
 export const DEPARTMENTS = [
   { id: 'comp', name: 'Computer Science & Engineering', code: 'CSE' },
   { id: 'it', name: 'Information Technology', code: 'IT' },
@@ -12,7 +12,7 @@ export const DIVISIONS = ['SY-A', 'SY-B', 'SY-C'];
 
 const initialData = {
   settings: {
-    collegeName: 'College of Engineering & Technology',
+    collegeName: 'Engineering College & Technology',
     academicYear: '2025-2026',
     defaultDurationMinutes: 3,
     maxDurationMinutes: 10,

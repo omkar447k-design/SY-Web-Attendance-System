@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import confetti from 'canvas-confetti';
-import { CheckCircle2, AlertTriangle, Clock, BookOpen, ShieldCheck, RefreshCw, Building2 } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, Clock, BookOpen, ShieldCheck, RefreshCw, Building2, User } from 'lucide-react';
 import { api } from '../services/api';
 import { PinInput } from '../components/PinInput';
 
@@ -26,7 +26,7 @@ export function StudentPortal({ student, device }) {
     try {
       const [dashRes, sessRes] = await Promise.all([
         api.getStudentDashboard(student.id || student.rollNo),
-        api.getStudentActiveSession(student.division, student.id)
+        api.getStudentActiveSession(student.division, student.id, student.department)
       ]);
 
       if (dashRes.success) {
@@ -50,9 +50,9 @@ export function StudentPortal({ student, device }) {
 
   useEffect(() => {
     refreshData();
-    const interval = setInterval(refreshData, 4000);
+    const interval = setInterval(refreshData, 3500);
     return () => clearInterval(interval);
-  }, [student.id, student.division]);
+  }, [student.id, student.division, student.department]);
 
   const handlePinSubmit = async (submittedPin) => {
     const pinToSubmit = submittedPin || pin;
@@ -140,7 +140,7 @@ export function StudentPortal({ student, device }) {
         </button>
       </div>
 
-      {/* ACTIVE CLASS ATTENDANCE CARD */}
+      {/* ACTIVE CLASS ATTENDANCE CARD (Auto-Appears for Targeted Divisions) */}
       {activeSession ? (
         <div className="bg-gradient-to-br from-indigo-900 via-indigo-950 to-slate-950 text-white rounded-3xl p-6 sm:p-8 shadow-2xl text-center relative overflow-hidden">
           
@@ -152,10 +152,23 @@ export function StudentPortal({ student, device }) {
           <h3 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
             {activeSession.subjectName}
           </h3>
-          <p className="text-slate-300 text-sm mt-1 font-medium">
-            Division: <span className="text-indigo-300 font-bold">{activeSession.division}</span>
-            {activeSession.batch !== 'All' ? ` • Batch: ${activeSession.batch}` : ''}
-          </p>
+          
+          <div className="flex flex-wrap items-center justify-center gap-2 text-slate-300 text-sm mt-2 font-medium">
+            {activeSession.teacherName && (
+              <span className="flex items-center space-x-1 bg-white/10 px-2.5 py-0.5 rounded-lg border border-white/10">
+                <User className="w-3.5 h-3.5 text-indigo-300" />
+                <span>{activeSession.teacherName}</span>
+              </span>
+            )}
+            <span className="bg-white/10 px-2.5 py-0.5 rounded-lg border border-white/10">
+              Divisions: <span className="text-indigo-300 font-bold">{activeSession.division}</span>
+            </span>
+            {activeSession.batch !== 'All' && (
+              <span className="bg-white/10 px-2.5 py-0.5 rounded-lg border border-white/10">
+                Batch: {activeSession.batch}
+              </span>
+            )}
+          </div>
 
           {submitSuccess || activeSession.alreadyMarked ? (
             <div className="my-6 p-6 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-200 max-w-sm mx-auto">
@@ -182,7 +195,7 @@ export function StudentPortal({ student, device }) {
               )}
 
               <p className="text-[11px] text-slate-300 mt-3 font-medium">
-                ⏱️ PIN rotates every 10 seconds. Type the active number on the screen.
+                ⏱️ PIN rotates every 10 seconds. Enter the current active PIN on the screen.
               </p>
             </div>
           )}
@@ -191,7 +204,9 @@ export function StudentPortal({ student, device }) {
         <div className="bg-white border border-slate-200 rounded-3xl p-6 text-center text-slate-500 text-sm shadow-sm">
           <Clock className="w-8 h-8 mx-auto mb-2 text-slate-400" />
           <p className="font-bold text-slate-800">No Active Attendance Session Right Now</p>
-          <p className="text-xs text-slate-500 mt-0.5">When your teacher starts a lecture, the PIN entry box will appear here automatically.</p>
+          <p className="text-xs text-slate-500 mt-0.5">
+            When a teacher starts attendance for {student.division} ({departmentName}), the PIN entry box will appear here instantly.
+          </p>
         </div>
       )}
 
@@ -267,7 +282,7 @@ export function StudentPortal({ student, device }) {
               <div className="flex items-start justify-between">
                 <div>
                   <span className="text-[10px] uppercase font-extrabold text-indigo-600 tracking-wider">
-                    {sub.code} • {sub.type}
+                    {sub.code || 'SUB'} • {sub.type || 'Theory'}
                   </span>
                   <h5 className="font-bold text-slate-900 text-sm mt-0.5">{sub.name}</h5>
                 </div>
