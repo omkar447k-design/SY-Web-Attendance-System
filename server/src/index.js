@@ -31,6 +31,7 @@ app.get('/api/health', (req, res) => {
 
 // --- ADMIN ROUTES ---
 app.post('/api/admin/login', AdminController.login);
+app.post('/api/admin/change-password', AdminController.changePassword);
 app.get('/api/admin/stats', AdminController.getStats);
 app.get('/api/admin/students', AdminController.getStudents);
 app.post('/api/admin/students', AdminController.addStudent);

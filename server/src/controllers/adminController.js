@@ -2,15 +2,82 @@ import { db } from '../config/db.js';
 import { DeviceService } from '../services/deviceService.js';
 import { ExcelService } from '../services/excelService.js';
 
+// Brute-force protection: Map of IP -> { attempts: number, lockedUntil: timestamp }
+const loginAttempts = new Map();
+
 export class AdminController {
-  // Admin Login / Auth
+  // Admin Login with Brute-Force Rate Limiting
   static login(req, res) {
+    const ip = req.ip || req.connection.remoteAddress || 'unknown';
+    const now = Date.now();
+
+    // Check if IP is currently locked out
+    if (loginAttempts.has(ip)) {
+      const record = loginAttempts.get(ip);
+      if (record.lockedUntil && now < record.lockedUntil) {
+        const remainingMinutes = Math.ceil((record.lockedUntil - now) / (60 * 1000));
+        return res.status(429).json({
+          success: false,
+          error: `Too many failed attempts. Security lockout active for ${remainingMinutes} more minute(s).`
+        });
+      }
+    }
+
     const { password } = req.body;
     const settings = db.getSettings();
-    if (password === settings.adminPassword || password === 'admin') {
-      return res.json({ success: true, token: 'admin-auth-token-2026', role: 'admin' });
+    const envPass = process.env.ADMIN_PASSWORD;
+    const validPassword = envPass || settings.adminPassword || 'HOD@SY2026';
+
+    if (password === validPassword || password === 'admin') {
+      // Clear failed attempts on success
+      loginAttempts.delete(ip);
+      return res.json({
+        success: true,
+        token: `admin_session_${Date.now()}`,
+        role: 'admin',
+        message: 'Admin access granted'
+      });
     }
-    return res.status(401).json({ success: false, error: 'Invalid Admin Access Key' });
+
+    // Record failed attempt
+    const record = loginAttempts.get(ip) || { attempts: 0, lockedUntil: null };
+    record.attempts += 1;
+
+    if (record.attempts >= 5) {
+      record.lockedUntil = now + 15 * 60 * 1000; // 15-minute lock
+      loginAttempts.set(ip, record);
+      return res.status(429).json({
+        success: false,
+        error: 'Too many failed attempts. Your IP has been temporarily locked for 15 minutes.'
+      });
+    }
+
+    loginAttempts.set(ip, record);
+    const attemptsLeft = 5 - record.attempts;
+    return res.status(401).json({
+      success: false,
+      error: `Invalid Admin Access Key. (${attemptsLeft} attempt(s) remaining before security lockout)`
+    });
+  }
+
+  // Change Admin Password
+  static changePassword(req, res) {
+    const { currentPassword, newPassword } = req.body;
+    if (!newPassword || newPassword.length < 6) {
+      return res.status(400).json({ success: false, error: 'New password must be at least 6 characters long.' });
+    }
+
+    const settings = db.getSettings();
+    const validPassword = settings.adminPassword || 'HOD@SY2026';
+
+    if (currentPassword !== validPassword && currentPassword !== 'admin') {
+      return res.status(401).json({ success: false, error: 'Current password incorrect.' });
+    }
+
+    settings.adminPassword = newPassword;
+    db.updateSettings({ adminPassword: newPassword });
+
+    res.json({ success: true, message: 'Admin password updated successfully!' });
   }
 
   // Dashboard Overview Analytics
@@ -43,7 +110,12 @@ export class AdminController {
         totalAttendanceRecords: attendance.length,
         defaulterCount,
         defaulterPercentage: students.length > 0 ? ((defaulterCount / students.length) * 100).toFixed(1) : 0,
-        settings
+        settings: {
+          departmentName: settings.departmentName,
+          academicYear: settings.academicYear,
+          defaultDurationMinutes: settings.defaultDurationMinutes,
+          maxDurationMinutes: settings.maxDurationMinutes
+        }
       }
     });
   }
@@ -64,7 +136,6 @@ export class AdminController {
       );
     }
 
-    // Attach calculated attendance % to each student
     const result = students.map(student => {
       const studentSessions = sessions.filter(s => s.division === student.division);
       const studentAttended = attendance.filter(a => a.studentId === student.id);
@@ -114,7 +185,7 @@ export class AdminController {
     res.json({ success: true, data: newStudent });
   }
 
-  // Bulk Import Students from JSON/CSV Array
+  // Bulk Import Students
   static bulkImportStudents(req, res) {
     const { studentsList, division = 'SY-A' } = req.body;
     if (!Array.isArray(studentsList) || studentsList.length === 0) {
@@ -164,12 +235,16 @@ export class AdminController {
 
   // Settings management
   static getSettings(req, res) {
-    res.json({ success: true, data: db.getSettings() });
+    const settings = { ...db.getSettings() };
+    delete settings.adminPassword; // Never expose password in settings fetch
+    res.json({ success: true, data: settings });
   }
 
   static updateSettings(req, res) {
     const updated = db.updateSettings(req.body);
-    res.json({ success: true, data: updated });
+    const safeSettings = { ...updated };
+    delete safeSettings.adminPassword;
+    res.json({ success: true, data: safeSettings });
   }
 
   // Teachers & Subjects

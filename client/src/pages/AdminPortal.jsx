@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Shield, Users, FileSpreadsheet, Settings, AlertTriangle, Download, RefreshCw, UserPlus, Unlock, Check, Search, BookOpen } from 'lucide-react';
+import { Shield, Users, FileSpreadsheet, Settings, AlertTriangle, Download, RefreshCw, UserPlus, Unlock, Check, Search, BookOpen, Key } from 'lucide-react';
 import { api } from '../services/api';
 
 export function AdminPortal() {
@@ -20,6 +20,12 @@ export function AdminPortal() {
   const [newName, setNewName] = useState('');
   const [newDivision, setNewDivision] = useState('SY-A');
   const [newBatch, setNewBatch] = useState('B1');
+
+  // Password Change state
+  const [currentPass, setCurrentPass] = useState('');
+  const [newPass, setNewPass] = useState('');
+  const [passMsg, setPassMsg] = useState('');
+  const [passError, setPassError] = useState('');
 
   // Load Admin Data
   const loadData = async () => {
@@ -98,6 +104,23 @@ export function AdminPortal() {
       }
     } catch (err) {
       alert(err.message || 'Failed to update settings');
+    }
+  };
+
+  // Change Admin Password
+  const handleChangePassword = async (e) => {
+    e.preventDefault();
+    setPassMsg('');
+    setPassError('');
+    try {
+      const res = await api.changeAdminPassword(currentPass, newPass);
+      if (res.success) {
+        setPassMsg('✅ Admin password updated successfully!');
+        setCurrentPass('');
+        setNewPass('');
+      }
+    } catch (err) {
+      setPassError(err.message || 'Failed to change password');
     }
   };
 
@@ -181,7 +204,7 @@ export function AdminPortal() {
             </div>
 
             <div className="bg-slate-800/80 border border-slate-700/80 rounded-2xl p-5 shadow-lg">
-              <span className="text-xs font-bold text-slate-400 uppercase">Lectures Conducted</span>
+              <span className="text-xs font-bold text-brand-400 uppercase">Lectures Conducted</span>
               <div className="text-3xl font-black text-brand-400 mt-1">{stats?.totalSessions || 0}</div>
               <p className="text-[11px] text-slate-500 mt-1">Total attendance sessions</p>
             </div>
@@ -372,77 +395,147 @@ export function AdminPortal() {
 
       {/* TAB 4: SETTINGS & POLICIES */}
       {activeTab === 'settings' && (
-        <div className="bg-slate-800/80 border border-slate-700/80 rounded-3xl p-6 shadow-xl max-w-2xl mx-auto">
-          <h3 className="text-base font-extrabold text-white mb-4 flex items-center space-x-2">
-            <Settings className="w-4 h-4 text-brand-400" />
-            <span>Global Department Attendance Policies</span>
-          </h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          
+          {/* Department Timing Rules */}
+          <div className="bg-slate-800/80 border border-slate-700/80 rounded-3xl p-6 shadow-xl">
+            <h3 className="text-base font-extrabold text-white mb-4 flex items-center space-x-2">
+              <Settings className="w-4 h-4 text-brand-400" />
+              <span>Department Attendance Timing</span>
+            </h3>
 
-          <form onSubmit={handleUpdateSettings} className="space-y-4">
-            <div>
-              <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
-                Department Name
-              </label>
-              <input
-                type="text"
-                value={settings.departmentName || ''}
-                onChange={(e) => setSettings({ ...settings, departmentName: e.target.value })}
-                className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white focus:border-brand-500 outline-none"
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
+            <form onSubmit={handleUpdateSettings} className="space-y-4">
               <div>
                 <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
-                  Default Session Duration (Mins)
+                  Department Name
                 </label>
                 <input
-                  type="number"
-                  min="1"
-                  max="15"
-                  value={settings.defaultDurationMinutes || 3}
-                  onChange={(e) => setSettings({ ...settings, defaultDurationMinutes: Number(e.target.value) })}
+                  type="text"
+                  value={settings.departmentName || ''}
+                  onChange={(e) => setSettings({ ...settings, departmentName: e.target.value })}
                   className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white focus:border-brand-500 outline-none"
                 />
               </div>
 
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
+                    Default Duration (Mins)
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="15"
+                    value={settings.defaultDurationMinutes || 3}
+                    onChange={(e) => setSettings({ ...settings, defaultDurationMinutes: Number(e.target.value) })}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white focus:border-brand-500 outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
+                    Max Allowed Cap (Mins)
+                  </label>
+                  <input
+                    type="number"
+                    min="3"
+                    max="30"
+                    value={settings.maxDurationMinutes || 10}
+                    onChange={(e) => setSettings({ ...settings, maxDurationMinutes: Number(e.target.value) })}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white focus:border-brand-500 outline-none"
+                  />
+                </div>
+              </div>
+
               <div>
                 <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
-                  Hard Max Session Cap (Mins)
+                  PIN Rotation Interval (Seconds)
                 </label>
                 <input
                   type="number"
-                  min="3"
-                  max="30"
-                  value={settings.maxDurationMinutes || 10}
-                  onChange={(e) => setSettings({ ...settings, maxDurationMinutes: Number(e.target.value) })}
-                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white focus:border-brand-500 outline-none"
+                  disabled
+                  value={10}
+                  className="w-full bg-slate-900/50 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-slate-400 outline-none cursor-not-allowed"
                 />
+                <p className="text-[11px] text-slate-500 mt-1">Locked at 10 seconds for optimum classroom anti-proxy security.</p>
               </div>
-            </div>
 
+              <div className="pt-2">
+                <button
+                  type="submit"
+                  className="w-full py-3 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-bold text-sm shadow-lg shadow-brand-600/30 transition active:scale-[0.98]"
+                >
+                  Save Timing Settings
+                </button>
+              </div>
+            </form>
+          </div>
+
+          {/* Change Admin Password */}
+          <div className="bg-slate-800/80 border border-slate-700/80 rounded-3xl p-6 shadow-xl flex flex-col justify-between">
             <div>
-              <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
-                PIN Rotation Interval (Seconds)
-              </label>
-              <input
-                type="number"
-                disabled
-                value={10}
-                className="w-full bg-slate-900/50 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-slate-400 outline-none cursor-not-allowed"
-              />
-              <p className="text-[11px] text-slate-500 mt-1">Locked at 10 seconds for optimum classroom projection anti-proxy.</p>
+              <h3 className="text-base font-extrabold text-white mb-4 flex items-center space-x-2">
+                <Key className="w-4 h-4 text-brand-400" />
+                <span>Change Admin Password</span>
+              </h3>
+
+              {passMsg && (
+                <div className="mb-4 p-3 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs">
+                  {passMsg}
+                </div>
+              )}
+
+              {passError && (
+                <div className="mb-4 p-3 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs">
+                  ⚠️ {passError}
+                </div>
+              )}
+
+              <form onSubmit={handleChangePassword} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
+                    Current Password
+                  </label>
+                  <input
+                    type="password"
+                    value={currentPass}
+                    onChange={(e) => setCurrentPass(e.target.value)}
+                    placeholder="Enter current password"
+                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white focus:border-brand-500 outline-none"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
+                    New Secret Password
+                  </label>
+                  <input
+                    type="password"
+                    value={newPass}
+                    onChange={(e) => setNewPass(e.target.value)}
+                    placeholder="Min. 6 characters"
+                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white focus:border-brand-500 outline-none"
+                    required
+                  />
+                </div>
+
+                <div className="pt-2">
+                  <button
+                    type="submit"
+                    className="w-full py-3 rounded-xl bg-slate-700 hover:bg-slate-600 text-white font-bold text-sm border border-slate-600 transition active:scale-[0.98]"
+                  >
+                    Update Secret Password
+                  </button>
+                </div>
+              </form>
             </div>
 
-            <div className="pt-3">
-              <button
-                type="submit"
-                className="w-full py-3 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-bold text-sm shadow-lg shadow-brand-600/30 transition active:scale-[0.98]"
-              >
-                Save Department Settings
-              </button>
-            </div>
-          </form>
+            <p className="text-[11px] text-slate-500 mt-4">
+              🔒 Keep this password private to HOD and Academic Coordinators.
+            </p>
+          </div>
+
         </div>
       )}
 

@@ -39,6 +39,7 @@ async function request(endpoint, options = {}) {
 export const api = {
   // Admin
   adminLogin: (password) => request('/api/admin/login', { method: 'POST', body: JSON.stringify({ password }) }),
+  changeAdminPassword: (currentPassword, newPassword) => request('/api/admin/change-password', { method: 'POST', body: JSON.stringify({ currentPassword, newPassword }) }),
   getAdminStats: () => request('/api/admin/stats'),
   getStudents: (params = {}) => {
     const query = new URLSearchParams(params).toString();
