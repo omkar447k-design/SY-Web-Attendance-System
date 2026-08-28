@@ -354,7 +354,7 @@ export function TeacherPortal({ teacher }) {
                 <span className="text-[10px] xs:text-xs font-extrabold uppercase tracking-wider text-slate-400">Total Verified Present</span>
                 <div className="text-4xl sm:text-5xl font-black text-emerald-400 mt-1">
                   {activeSession.totalPresent || 0}
-                  <span className="text-base sm:text-lg text-slate-500 font-bold"> / {activeSession.totalStudents || 60}</span>
+                  <span className="text-base sm:text-lg text-slate-500 font-bold"> / {activeSession.totalStudents || (80 * (activeSession.divisions?.length || 1))}</span>
                 </div>
                 <div className="text-xs text-slate-400 mt-1">
                   Divisions: <span className="text-indigo-300 font-bold">{activeSession.division}</span>

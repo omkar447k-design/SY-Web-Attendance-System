@@ -159,9 +159,10 @@ setInterval(() => {
     const pinInfo = PinService.getCurrentPinInfo(session.id);
     const attendance = db.get('attendance').filter(a => a.sessionId === session.id);
     const sessionDivisions = session.divisions || [session.division];
-    const totalStudents = db.get('students').filter(
+    const registeredCount = db.get('students').filter(
       s => (!session.department || s.department === session.department) && sessionDivisions.includes(s.division)
     ).length;
+    const totalStudents = Math.max(registeredCount, 80 * sessionDivisions.length);
     const remainingSessionSec = Math.max(0, Math.ceil((endTime.getTime() - now.getTime()) / 1000));
 
     io.to(session.id).emit('pin_tick', {

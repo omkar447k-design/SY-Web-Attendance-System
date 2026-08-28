@@ -23,9 +23,10 @@ export class TeacherController {
     const pinInfo = PinService.getCurrentPinInfo(active.id);
     const attendance = db.get('attendance').filter(a => a.sessionId === active.id);
     const sessionDivisions = active.divisions || [active.division];
-    const totalStudents = db.get('students').filter(
+    const registeredCount = db.get('students').filter(
       s => (!active.department || s.department === active.department) && sessionDivisions.includes(s.division)
     ).length;
+    const totalStudents = Math.max(registeredCount, 80 * sessionDivisions.length);
     const remainingSessionSec = Math.max(0, Math.ceil((endTime.getTime() - now.getTime()) / 1000));
 
     res.json({
@@ -108,9 +109,10 @@ export class TeacherController {
     });
 
     const pinInfo = PinService.getCurrentPinInfo(newSession.id);
-    const totalStudents = db.get('students').filter(
+    const registeredCount = db.get('students').filter(
       s => (!department || s.department === department) && selectedDivs.includes(s.division)
     ).length;
+    const totalStudents = Math.max(registeredCount, 80 * selectedDivs.length);
 
     res.json({
       success: true,
