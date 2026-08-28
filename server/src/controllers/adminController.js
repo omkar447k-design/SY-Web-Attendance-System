@@ -14,11 +14,12 @@ export class AdminController {
       const hodAccounts = db.getHodAccounts();
       const deptStatus = DEPARTMENTS.map(dept => {
         const acc = hodAccounts[dept.id] || {};
+        const isConfigured = Boolean(acc.password && acc.name && acc.isFirstTime === false);
         return {
           id: dept.id,
           name: dept.name,
           hodName: acc.name || null,
-          isFirstTime: Boolean(!acc.name || !acc.password || acc.isFirstTime)
+          isFirstTime: !isConfigured
         };
       });
 
@@ -53,9 +54,15 @@ export class AdminController {
     const { department = 'entc', hodName, password, newPassword, isFirstTimeSetup } = req.body;
     const hodAccounts = db.getHodAccounts();
     const deptObj = DEPARTMENTS.find(d => d.id === department);
-    const hod = hodAccounts[department] || { department, name: null, password: null, isFirstTime: true };
+    let hod = hodAccounts[department];
 
-    if (isFirstTimeSetup || hod.isFirstTime || !hod.password) {
+    if (!hod) {
+      hod = { department, name: null, password: null, isFirstTime: true };
+    }
+
+    const hasExistingAccount = Boolean(hod.password && hod.name && hod.isFirstTime === false);
+
+    if ((isFirstTimeSetup || !hasExistingAccount) && !hasExistingAccount) {
       if (!hodName || hodName.trim().length < 3) {
         return res.status(400).json({
           success: false,
@@ -72,6 +79,7 @@ export class AdminController {
 
       const finalHodName = hodName.trim();
       db.setHodAccount(department, {
+        department,
         name: finalHodName,
         password: newPassword,
         isFirstTime: false,
@@ -103,6 +111,7 @@ export class AdminController {
 
       return res.json({
         success: true,
+        isFirstTime: false,
         token: `hod_session_${department}_${Date.now()}`,
         role: 'admin',
         department,
@@ -116,6 +125,7 @@ export class AdminController {
       loginAttempts.delete(ip);
       return res.json({
         success: true,
+        isFirstTime: false,
         token: `hod_session_${department}_${Date.now()}`,
         role: 'admin',
         department,
@@ -140,7 +150,7 @@ export class AdminController {
     const attemptsLeft = 5 - record.attempts;
     return res.status(401).json({
       success: false,
-      error: `Incorrect HOD Password for ${hod.name || deptObj?.name}. (${attemptsLeft} attempt(s) remaining)`
+      error: `Incorrect HOD Password. (${attemptsLeft} attempt(s) remaining)`
     });
   }
 

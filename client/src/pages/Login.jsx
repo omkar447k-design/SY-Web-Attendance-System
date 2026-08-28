@@ -174,7 +174,7 @@ function compressImage(file) {
 }
 
 export function Login({ onLoginSuccess }) {
-  // Student form state (Department is 100% LOCKED to ID card)
+  // Student form state
   const [department, setDepartment] = useState('');
   const [division, setDivision] = useState('SY-A');
   const [rollNo, setRollNo] = useState('');
@@ -239,6 +239,24 @@ export function Login({ onLoginSuccess }) {
         .catch(() => {});
     }
   }, [teacherName, teacherDept, modalMode]);
+
+  // Sync HOD Department State & Check Local Storage to never repeat setup
+  const updateSelectedHodDepartment = (deptId, deptList = hodDeptList) => {
+    setSelectedHodDept(deptId);
+    setAdminError('');
+
+    const curr = deptList.find(d => d.id === deptId);
+    const localConfigured = localStorage.getItem(`sy_hod_configured_${deptId}`) === 'true';
+    const localName = localStorage.getItem(`sy_hod_name_${deptId}`);
+
+    if (localConfigured || (curr && curr.isFirstTime === false)) {
+      setHodIsFirstTime(false);
+      setHodName(localName || curr?.hodName || '');
+    } else {
+      setHodIsFirstTime(true);
+      setHodName('');
+    }
+  };
 
   const toggleDivisionSelection = (div) => {
     if (selectedDivisions.includes(div)) {
@@ -453,12 +471,9 @@ export function Login({ onLoginSuccess }) {
       if (res.success) {
         setHodDeptList(res.departments || []);
         const defaultDept = res.departments?.[0]?.id || 'entc';
-        setSelectedHodDept(defaultDept);
-        const curr = res.departments?.find(d => d.id === defaultDept);
-        setHodIsFirstTime(Boolean(curr?.isFirstTime));
-        setHodName(curr?.hodName || '');
         setGatekeeperStage(2);
         setModalMode('select');
+        updateSelectedHodDepartment(defaultDept, res.departments || []);
       }
     } catch (err) {
       setAdminError(err.message || 'Invalid College Access Code');
@@ -494,6 +509,10 @@ export function Login({ onLoginSuccess }) {
       });
 
       if (res.success) {
+        // Persist HOD configuration locally so setup is NEVER prompted again
+        localStorage.setItem(`sy_hod_configured_${selectedHodDept}`, 'true');
+        localStorage.setItem(`sy_hod_name_${selectedHodDept}`, res.hodName || hodName.trim());
+
         setShowAdminModal(false);
         onLoginSuccess('admin', {
           name: res.hodName || hodName.trim(),
@@ -939,7 +958,6 @@ export function Login({ onLoginSuccess }) {
 
                 <form onSubmit={handleTeacherLogin} className="space-y-3 max-h-[70vh] overflow-y-auto pr-1">
                   
-                  {/* Faculty Name */}
                   <div>
                     <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Faculty / Professor Name</label>
                     <input
@@ -952,7 +970,6 @@ export function Login({ onLoginSuccess }) {
                     />
                   </div>
 
-                  {/* Teaching Department */}
                   <div>
                     <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Teaching In Department</label>
                     <select
@@ -969,7 +986,6 @@ export function Login({ onLoginSuccess }) {
                     </p>
                   </div>
 
-                  {/* Custom Subject Name Input (No hardcoded options) */}
                   <div>
                     <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Subject / Lecture Name</label>
                     <input
@@ -982,7 +998,6 @@ export function Login({ onLoginSuccess }) {
                     />
                   </div>
 
-                  {/* Multi-Division Selection */}
                   <div>
                     <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Select Division(s)</label>
                     <div className="grid grid-cols-3 gap-1.5">
@@ -1006,7 +1021,6 @@ export function Login({ onLoginSuccess }) {
                     </div>
                   </div>
 
-                  {/* Batch Selection */}
                   <div>
                     <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Lecture Type / Batch</label>
                     <select
@@ -1021,7 +1035,6 @@ export function Login({ onLoginSuccess }) {
                     </select>
                   </div>
 
-                  {/* One-Time Password Setup vs Password Login */}
                   {teacherIsFirstTime ? (
                     <div className="p-3 rounded-xl bg-indigo-50/80 border border-indigo-200 space-y-2">
                       <div className="text-[11px] font-bold text-indigo-900 flex items-center space-x-1">
@@ -1079,7 +1092,7 @@ export function Login({ onLoginSuccess }) {
               </div>
             )}
 
-            {/* STAGE 2: HOD LOGIN FORM (1 HOD PER DEPARTMENT WITH FIRST-TIME SETUP) */}
+            {/* STAGE 2: HOD LOGIN FORM (1 HOD PER DEPARTMENT WITH PERSISTENT CHECK) */}
             {gatekeeperStage === 2 && modalMode === 'hod' && (
               <div>
                 <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-100">
@@ -1109,13 +1122,7 @@ export function Login({ onLoginSuccess }) {
                     </label>
                     <select
                       value={selectedHodDept}
-                      onChange={(e) => {
-                        setSelectedHodDept(e.target.value);
-                        const curr = hodDeptList.find(d => d.id === e.target.value);
-                        setHodIsFirstTime(Boolean(curr?.isFirstTime));
-                        setHodName(curr?.hodName || '');
-                        setAdminError('');
-                      }}
+                      onChange={(e) => updateSelectedHodDepartment(e.target.value)}
                       className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 font-semibold focus:border-indigo-600 outline-none"
                     >
                       {DEPARTMENTS.map(d => (
@@ -1168,8 +1175,9 @@ export function Login({ onLoginSuccess }) {
                     </div>
                   ) : (
                     <div>
-                      <div className="mb-2 p-2.5 rounded-xl bg-slate-100 text-xs font-bold text-slate-800">
-                        👨‍🏫 Verified HOD: <span className="text-indigo-600">{hodName || 'Department Head'}</span>
+                      <div className="mb-2 p-2.5 rounded-xl bg-slate-100 text-xs font-bold text-slate-800 flex items-center justify-between">
+                        <span>👨‍🏫 Registered HOD: <span className="text-indigo-600">{hodName || 'Department Head'}</span></span>
+                        <span className="text-[10px] text-emerald-600 font-extrabold">● Configured</span>
                       </div>
                       <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
                         HOD Private Password

@@ -14,11 +14,12 @@ export class AdminController {
       const hodAccounts = db.getHodAccounts();
       const deptStatus = DEPARTMENTS.map(dept => {
         const acc = hodAccounts[dept.id] || {};
+        const isConfigured = Boolean(acc.password && acc.name && acc.isFirstTime === false);
         return {
           id: dept.id,
           name: dept.name,
           hodName: acc.name || null,
-          isFirstTime: Boolean(!acc.name || !acc.password || acc.isFirstTime)
+          isFirstTime: !isConfigured
         };
       });
 
@@ -53,10 +54,16 @@ export class AdminController {
     const { department = 'entc', hodName, password, newPassword, isFirstTimeSetup } = req.body;
     const hodAccounts = db.getHodAccounts();
     const deptObj = DEPARTMENTS.find(d => d.id === department);
-    const hod = hodAccounts[department] || { department, name: null, password: null, isFirstTime: true };
+    let hod = hodAccounts[department];
 
-    // FIRST-TIME HOD REGISTRATION (Only 1 HOD per department)
-    if (isFirstTimeSetup || hod.isFirstTime || !hod.password) {
+    if (!hod) {
+      hod = { department, name: null, password: null, isFirstTime: true };
+    }
+
+    const hasExistingAccount = Boolean(hod.password && hod.name && hod.isFirstTime === false);
+
+    // CASE 1: FIRST-TIME HOD REGISTRATION (Only if no password exists yet or explicit first-time setup)
+    if ((isFirstTimeSetup || !hasExistingAccount) && !hasExistingAccount) {
       if (!hodName || hodName.trim().length < 3) {
         return res.status(400).json({
           success: false,
@@ -73,13 +80,14 @@ export class AdminController {
 
       const finalHodName = hodName.trim();
       db.setHodAccount(department, {
+        department,
         name: finalHodName,
         password: newPassword,
         isFirstTime: false,
         configuredAt: new Date().toISOString()
       });
 
-      // Also register HOD as a faculty member of this department so they can conduct lectures
+      // Also register HOD in teachers list for lecture conducting
       let teachers = db.get('teachers');
       let teacherRec = teachers.find(t => t.name.toLowerCase() === finalHodName.toLowerCase() && t.department === department);
       if (!teacherRec) {
@@ -105,6 +113,7 @@ export class AdminController {
 
       return res.json({
         success: true,
+        isFirstTime: false,
         token: `hod_session_${department}_${Date.now()}`,
         role: 'admin',
         department,
@@ -113,12 +122,13 @@ export class AdminController {
       });
     }
 
-    // SUBSEQUENT LOGIN
+    // CASE 2: NORMAL LOGIN FOR CONFIGURED HOD
     const validPassword = hod.password || 'admin';
     if (password === validPassword || password === 'admin') {
       loginAttempts.delete(ip);
       return res.json({
         success: true,
+        isFirstTime: false,
         token: `hod_session_${department}_${Date.now()}`,
         role: 'admin',
         department,
@@ -143,7 +153,7 @@ export class AdminController {
     const attemptsLeft = 5 - record.attempts;
     return res.status(401).json({
       success: false,
-      error: `Incorrect HOD Password for ${hod.name || deptObj?.name}. (${attemptsLeft} attempt(s) remaining)`
+      error: `Incorrect HOD Password. (${attemptsLeft} attempt(s) remaining)`
     });
   }
 
