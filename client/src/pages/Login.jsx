@@ -486,8 +486,10 @@ export function Login({ onLoginSuccess }) {
     e.preventDefault();
     setAdminError('');
 
+    const resolvedHodName = hodName.trim() || localStorage.getItem(`sy_hod_name_${selectedHodDept}`) || '';
+
     if (hodIsFirstTime) {
-      if (!hodName.trim() || hodName.trim().length < 3) {
+      if (!resolvedHodName || resolvedHodName.length < 3) {
         return setAdminError('Please enter your Full Name as HOD');
       }
       if (!hodNewPassword || hodNewPassword.length < 6) {
@@ -496,25 +498,28 @@ export function Login({ onLoginSuccess }) {
       if (hodNewPassword !== hodConfirmPassword) {
         return setAdminError('Passwords do not match');
       }
+    } else if (!hodPassword) {
+      return setAdminError('Please enter your HOD Private Password');
     }
 
     setLoading(true);
     try {
       const res = await api.hodLogin({
         department: selectedHodDept,
-        hodName: hodName.trim(),
+        hodName: resolvedHodName,
         password: hodPassword,
         newPassword: hodNewPassword,
         isFirstTimeSetup: hodIsFirstTime
       });
 
       if (res.success) {
+        const finalName = res.hodName || resolvedHodName || 'Department Head';
         localStorage.setItem(`sy_hod_configured_${selectedHodDept}`, 'true');
-        localStorage.setItem(`sy_hod_name_${selectedHodDept}`, res.hodName || hodName.trim());
+        localStorage.setItem(`sy_hod_name_${selectedHodDept}`, finalName);
 
         setShowAdminModal(false);
         onLoginSuccess('admin', {
-          name: res.hodName || hodName.trim(),
+          name: finalName,
           department: selectedHodDept,
           role: 'admin'
         });
