@@ -64,7 +64,7 @@ export function PinInput({ length = 4, onComplete, disabled = false, autoFocus =
   };
 
   return (
-    <div className="flex justify-center items-center space-x-3 sm:space-x-4 my-4" onPaste={handlePaste}>
+    <div className="flex justify-center items-center space-x-2 xs:space-x-3 sm:space-x-4 my-4 max-w-full" onPaste={handlePaste}>
       {Array(length).fill(0).map((_, i) => (
         <input
           key={i}
@@ -77,12 +77,12 @@ export function PinInput({ length = 4, onComplete, disabled = false, autoFocus =
           onChange={(e) => handleChange(i, e.target.value)}
           onKeyDown={(e) => handleKeyDown(i, e)}
           disabled={disabled}
-          className={`w-14 h-16 sm:w-16 sm:h-20 text-center text-3xl sm:text-4xl font-extrabold rounded-2xl border-2 transition-all duration-200 outline-none select-none
+          className={`w-12 h-14 xs:w-14 xs:h-16 sm:w-16 sm:h-20 text-center text-2xl xs:text-3xl sm:text-4xl font-extrabold rounded-xl sm:rounded-2xl border-2 transition-all duration-150 outline-none select-none
             ${digits[i]
-              ? 'border-indigo-600 bg-indigo-50/50 text-indigo-900 shadow-md shadow-indigo-100'
-              : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-indigo-600 focus:bg-white focus:shadow-md'
+              ? 'border-indigo-600 bg-indigo-50/70 text-indigo-950 shadow-md shadow-indigo-100 ring-2 ring-indigo-300'
+              : 'border-slate-300 bg-white text-slate-900 focus:border-indigo-600 focus:bg-white focus:ring-2 focus:ring-indigo-200'
             }
-            ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-text hover:border-slate-300'}
+            ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-text hover:border-slate-400'}
           `}
         />
       ))}

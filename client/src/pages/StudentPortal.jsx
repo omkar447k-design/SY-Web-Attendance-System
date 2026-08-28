@@ -52,7 +52,7 @@ export function StudentPortal({ student, device }) {
 
   useEffect(() => {
     refreshData();
-    const interval = setInterval(refreshData, 3500);
+    const interval = setInterval(refreshData, 3000);
     return () => clearInterval(interval);
   }, [student.id, student.division, student.department]);
 
@@ -107,64 +107,64 @@ export function StudentPortal({ student, device }) {
   const stats = dashboardData?.stats;
   const overallPct = stats?.overallPercentage ?? 100;
   const isSafe = overallPct >= 75.0;
-  const departmentName = DEPT_NAMES[student.department] || 'Computer Science & Engineering';
+  const departmentName = DEPT_NAMES[student.department] || 'Electronics & Telecommunication';
 
   return (
-    <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-6">
+    <div className="max-w-4xl mx-auto px-3 xs:px-4 sm:px-6 py-4 xs:py-6 sm:py-8 space-y-4 sm:space-y-6">
       
       {/* Student Welcome Header Card */}
-      <div className="bg-white border border-slate-200/90 rounded-3xl p-5 sm:p-6 shadow-md flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div className="flex items-center space-x-4">
-          <div className="relative">
+      <div className="bg-white border border-slate-200/90 rounded-2xl sm:rounded-3xl p-4 xs:p-5 sm:p-6 shadow-md flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3.5 sm:gap-4">
+        <div className="flex items-center space-x-3 sm:space-x-4 min-w-0 w-full sm:w-auto">
+          <div className="relative flex-shrink-0">
             {student.idCardPhoto ? (
               <img
                 src={student.idCardPhoto}
                 alt="ID Badge"
                 onClick={() => setShowIdModal(true)}
-                className="w-14 h-14 rounded-2xl object-cover border-2 border-indigo-600 shadow-md cursor-pointer hover:opacity-90 transition"
+                className="w-12 h-12 xs:w-14 xs:h-14 rounded-2xl object-cover border-2 border-indigo-600 shadow-md cursor-pointer hover:opacity-90 transition"
                 title="Click to view verified ID Card"
               />
             ) : (
-              <div className="w-14 h-14 rounded-2xl bg-indigo-600 flex items-center justify-center text-white text-xl font-extrabold shadow-md shadow-indigo-100">
+              <div className="w-12 h-12 xs:w-14 xs:h-14 rounded-2xl bg-indigo-600 flex items-center justify-center text-white text-lg xs:text-xl font-extrabold shadow-md shadow-indigo-100">
                 {student.rollNo}
               </div>
             )}
-            <span className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-emerald-500 text-white flex items-center justify-center text-[10px] font-bold border-2 border-white" title="Verified ID">
+            <span className="absolute -bottom-1 -right-1 w-4 h-4 xs:w-5 xs:h-5 rounded-full bg-emerald-500 text-white flex items-center justify-center text-[9px] xs:text-[10px] font-bold border-2 border-white" title="Verified ID">
               ✓
             </span>
           </div>
 
-          <div>
-            <div className="flex items-center space-x-2">
-              <h2 className="text-xl font-extrabold text-slate-900">{student.name}</h2>
-              <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-100">
-                {student.division} • Batch {student.batch}
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center space-x-1.5 xs:space-x-2 flex-wrap">
+              <h2 className="text-base xs:text-lg sm:text-xl font-extrabold text-slate-900 truncate">{student.name}</h2>
+              <span className="text-[10px] xs:text-[11px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-100 flex-shrink-0">
+                {student.division} • {student.batch}
               </span>
             </div>
-            <p className="text-xs text-slate-500 mt-0.5 flex items-center space-x-1.5 font-medium">
-              <Building2 className="w-3.5 h-3.5 text-indigo-500" />
-              <span>{departmentName}</span>
-              <span>• Roll #{student.rollNo} • PRN: {student.prn}</span>
+            <p className="text-[11px] xs:text-xs text-slate-500 mt-0.5 flex items-center space-x-1 font-medium truncate">
+              <Building2 className="w-3.5 h-3.5 text-indigo-500 flex-shrink-0" />
+              <span className="truncate">{departmentName}</span>
+              <span className="flex-shrink-0">• #{student.rollNo}</span>
             </p>
           </div>
         </div>
 
         {/* View Switcher Tabs */}
-        <div className="flex items-center space-x-2 self-end sm:self-center">
-          <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200">
+        <div className="flex items-center space-x-2 w-full sm:w-auto justify-between sm:justify-end border-t sm:border-t-0 pt-2.5 sm:pt-0 border-slate-100">
+          <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200 flex-1 sm:flex-none">
             <button
               onClick={() => setActiveTab('attendance')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+              className={`flex-1 sm:flex-none px-3 py-1.5 rounded-lg text-xs font-bold transition touch-target flex items-center justify-center ${
                 activeTab === 'attendance'
                   ? 'bg-white text-indigo-600 shadow-sm'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              Mark Attendance
+              Attendance
             </button>
             <button
               onClick={() => setActiveTab('profile')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+              className={`flex-1 sm:flex-none px-3 py-1.5 rounded-lg text-xs font-bold transition touch-target flex items-center justify-center ${
                 activeTab === 'profile'
                   ? 'bg-white text-indigo-600 shadow-sm'
                   : 'text-slate-600 hover:text-slate-900'
@@ -176,7 +176,7 @@ export function StudentPortal({ student, device }) {
 
           <button
             onClick={refreshData}
-            className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 transition"
+            className="p-2 sm:p-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 transition touch-target flex items-center justify-center flex-shrink-0"
             title="Refresh"
           >
             <RefreshCw className="w-3.5 h-3.5" />
@@ -186,29 +186,29 @@ export function StudentPortal({ student, device }) {
 
       {/* VIEW 1: ATTENDANCE SCANNER & DASHBOARD */}
       {activeTab === 'attendance' && (
-        <div className="space-y-6">
+        <div className="space-y-4 sm:space-y-6">
           
           {/* ACTIVE CLASS ATTENDANCE CARD */}
           {activeSession ? (
-            <div className="bg-gradient-to-br from-indigo-900 via-indigo-950 to-slate-950 text-white rounded-3xl p-6 sm:p-8 shadow-2xl text-center relative overflow-hidden">
-              <div className="inline-flex items-center space-x-2 px-3.5 py-1 rounded-full bg-rose-500/20 border border-rose-500/30 text-rose-300 text-xs font-bold uppercase tracking-wider mb-4 animate-pulse">
+            <div className="bg-gradient-to-br from-indigo-900 via-indigo-950 to-slate-950 text-white rounded-2xl sm:rounded-3xl p-4 xs:p-6 sm:p-8 shadow-2xl text-center relative overflow-hidden">
+              <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-rose-500/20 border border-rose-500/30 text-rose-300 text-[11px] xs:text-xs font-bold uppercase tracking-wider mb-3 xs:mb-4 animate-pulse">
                 <span className="w-2 h-2 rounded-full bg-rose-400"></span>
                 <span>Live Class Attendance Open</span>
               </div>
 
-              <h3 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
+              <h3 className="text-xl xs:text-2xl sm:text-3xl font-extrabold text-white tracking-tight px-2">
                 {activeSession.subjectName}
               </h3>
               
-              <div className="flex flex-wrap items-center justify-center gap-2 text-slate-300 text-sm mt-2 font-medium">
+              <div className="flex flex-wrap items-center justify-center gap-1.5 xs:gap-2 text-slate-300 text-xs sm:text-sm mt-2 font-medium">
                 {activeSession.teacherName && (
                   <span className="flex items-center space-x-1 bg-white/10 px-2.5 py-0.5 rounded-lg border border-white/10">
-                    <User className="w-3.5 h-3.5 text-indigo-300" />
-                    <span>{activeSession.teacherName}</span>
+                    <User className="w-3.5 h-3.5 text-indigo-300 flex-shrink-0" />
+                    <span className="truncate">{activeSession.teacherName}</span>
                   </span>
                 )}
                 <span className="bg-white/10 px-2.5 py-0.5 rounded-lg border border-white/10">
-                  Target Divisions: <span className="text-indigo-300 font-bold">{activeSession.division}</span>
+                  Divisions: <span className="text-indigo-300 font-bold">{activeSession.division}</span>
                 </span>
                 {activeSession.batch !== 'All' && (
                   <span className="bg-white/10 px-2.5 py-0.5 rounded-lg border border-white/10">
@@ -218,15 +218,15 @@ export function StudentPortal({ student, device }) {
               </div>
 
               {submitSuccess || activeSession.alreadyMarked ? (
-                <div className="my-6 p-6 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-200 max-w-sm mx-auto">
-                  <CheckCircle2 className="w-12 h-12 mx-auto mb-2 text-emerald-400" />
-                  <p className="font-extrabold text-lg text-white">Present Recorded!</p>
+                <div className="my-4 sm:my-6 p-5 sm:p-6 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-200 max-w-sm mx-auto">
+                  <CheckCircle2 className="w-10 h-10 xs:w-12 xs:h-12 mx-auto mb-2 text-emerald-400" />
+                  <p className="font-extrabold text-base xs:text-lg text-white">Present Recorded!</p>
                   <p className="text-xs text-emerald-200 mt-1">Your attendance is confirmed for this lecture.</p>
                 </div>
               ) : (
-                <div className="my-6 max-w-sm mx-auto bg-white/10 backdrop-blur-md p-6 rounded-2xl border border-white/20">
-                  <p className="text-xs font-semibold text-slate-200 uppercase tracking-wider mb-2">
-                    Enter the 4-digit PIN on the Projector Screen:
+                <div className="my-4 sm:my-6 max-w-sm mx-auto bg-white/10 backdrop-blur-md p-4 xs:p-6 rounded-2xl border border-white/20">
+                  <p className="text-[11px] xs:text-xs font-semibold text-slate-200 uppercase tracking-wider mb-2">
+                    Enter the 4-digit PIN on Projector:
                   </p>
 
                   <PinInput
@@ -241,34 +241,34 @@ export function StudentPortal({ student, device }) {
                     </p>
                   )}
 
-                  <p className="text-[11px] text-slate-300 mt-3 font-medium">
-                    ⏱️ PIN rotates every 10 seconds. Enter the current active PIN on screen.
+                  <p className="text-[10px] xs:text-[11px] text-slate-300 mt-2.5 font-medium">
+                    ⏱️ PIN rotates every 10 seconds. Enter active PIN on screen.
                   </p>
                 </div>
               )}
             </div>
           ) : (
-            <div className="bg-white border border-slate-200 rounded-3xl p-6 text-center text-slate-500 text-sm shadow-sm">
-              <Clock className="w-8 h-8 mx-auto mb-2 text-slate-400" />
-              <p className="font-bold text-slate-800">No Active Attendance Session Right Now</p>
-              <p className="text-xs text-slate-500 mt-0.5">
+            <div className="bg-white border border-slate-200 rounded-2xl sm:rounded-3xl p-5 sm:p-6 text-center text-slate-500 text-xs sm:text-sm shadow-sm">
+              <Clock className="w-7 h-7 sm:w-8 sm:h-8 mx-auto mb-2 text-slate-400" />
+              <p className="font-bold text-slate-800 text-sm xs:text-base">No Active Attendance Session Right Now</p>
+              <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
                 When your professor starts attendance for {student.division} ({departmentName}), the PIN entry box will appear here instantly.
               </p>
             </div>
           )}
 
           {/* ATTENDANCE ANALYTICS GAUGE & 75% TARGET CALCULATOR */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-            <div className="bg-white border border-slate-200 rounded-3xl p-5 sm:p-6 shadow-sm flex flex-col items-center justify-center text-center">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-5">
+            <div className="bg-white border border-slate-200 rounded-2xl sm:rounded-3xl p-4 xs:p-5 sm:p-6 shadow-sm flex flex-col items-center justify-center text-center">
+              <span className="text-[11px] xs:text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">
                 Overall Department Attendance
               </span>
-              <div className="relative flex items-center justify-center my-2">
-                <div className={`text-4xl sm:text-5xl font-black ${isSafe ? 'text-emerald-600' : 'text-amber-600'}`}>
+              <div className="relative flex items-center justify-center my-1.5 sm:my-2">
+                <div className={`text-3xl xs:text-4xl sm:text-5xl font-black ${isSafe ? 'text-emerald-600' : 'text-amber-600'}`}>
                   {overallPct}%
                 </div>
               </div>
-              <div className={`text-xs font-bold px-3 py-1 rounded-full mt-2 ${
+              <div className={`text-xs font-bold px-3 py-1 rounded-full mt-1 ${
                 isSafe
                   ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                   : 'bg-amber-50 text-amber-700 border border-amber-200'
@@ -280,32 +280,32 @@ export function StudentPortal({ student, device }) {
               </p>
             </div>
 
-            <div className="md:col-span-2 bg-white border border-slate-200 rounded-3xl p-5 sm:p-6 shadow-sm flex flex-col justify-between">
+            <div className="md:col-span-2 bg-white border border-slate-200 rounded-2xl sm:rounded-3xl p-4 xs:p-5 sm:p-6 shadow-sm flex flex-col justify-between">
               <div>
-                <div className="flex items-center space-x-2 text-slate-800 font-bold text-sm mb-2">
-                  <ShieldCheck className="w-4 h-4 text-indigo-600" />
+                <div className="flex items-center space-x-2 text-slate-800 font-bold text-xs xs:text-sm mb-2">
+                  <ShieldCheck className="w-4 h-4 text-indigo-600 flex-shrink-0" />
                   <span>HOD 75% Mandatory Attendance Rule</span>
                 </div>
                 
                 {isSafe ? (
-                  <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs sm:text-sm leading-relaxed">
+                  <div className="p-3 xs:p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs sm:text-sm leading-relaxed">
                     🎉 <strong>Great job!</strong> Your attendance is above 75%. Keep attending regularly to remain in the safe zone for term work submission.
                   </div>
                 ) : (
-                  <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-xs sm:text-sm leading-relaxed">
-                    ⚠️ <strong>Attendance Warning:</strong> You are currently on the Defaulter List. You need to attend the next <span className="font-extrabold text-slate-900 underline">{stats?.lecturesNeededFor75 || 2} lectures consecutively</span> to cross 75%!
+                  <div className="p-3 xs:p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs sm:text-sm leading-relaxed">
+                    ⚠️ <strong>Attendance Warning:</strong> You are on the Defaulter List. You need to attend the next <span className="font-extrabold text-slate-900 underline">{stats?.lecturesNeededFor75 || 2} lectures consecutively</span> to cross 75%!
                   </div>
                 )}
               </div>
 
-              <div className="grid grid-cols-2 gap-3 mt-4 pt-3 border-t border-slate-100 text-xs text-slate-500">
+              <div className="grid grid-cols-2 gap-3 mt-3.5 pt-3 border-t border-slate-100 text-xs text-slate-500">
                 <div>
-                  <span className="block text-slate-400">Min. Target Required</span>
-                  <span className="font-bold text-slate-900 text-sm">75.0%</span>
+                  <span className="block text-slate-400 text-[11px]">Min. Required</span>
+                  <span className="font-bold text-slate-900 text-xs sm:text-sm">75.0%</span>
                 </div>
                 <div>
-                  <span className="block text-slate-400">Term Work Eligibility</span>
-                  <span className={`font-bold text-sm ${isSafe ? 'text-emerald-600' : 'text-amber-600'}`}>
+                  <span className="block text-slate-400 text-[11px]">Term Work Eligibility</span>
+                  <span className={`font-bold text-xs sm:text-sm ${isSafe ? 'text-emerald-600' : 'text-amber-600'}`}>
                     {isSafe ? 'Eligible' : 'At Risk'}
                   </span>
                 </div>
@@ -314,30 +314,30 @@ export function StudentPortal({ student, device }) {
           </div>
 
           {/* SUBJECT-WISE ATTENDANCE BREAKDOWN */}
-          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm">
-            <h4 className="text-base font-extrabold text-slate-900 mb-4 flex items-center space-x-2">
-              <BookOpen className="w-4 h-4 text-indigo-600" />
+          <div className="bg-white border border-slate-200 rounded-2xl sm:rounded-3xl p-4 xs:p-6 shadow-sm">
+            <h4 className="text-sm xs:text-base font-extrabold text-slate-900 mb-3 sm:mb-4 flex items-center space-x-2">
+              <BookOpen className="w-4 h-4 text-indigo-600 flex-shrink-0" />
               <span>Subject-Wise Attendance Breakdown</span>
             </h4>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3">
               {dashboardData?.subjectStats?.map((sub) => (
-                <div key={sub.id} className="p-4 rounded-2xl bg-slate-50 border border-slate-200 flex flex-col justify-between">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <span className="text-[10px] uppercase font-extrabold text-indigo-600 tracking-wider">
+                <div key={sub.id} className="p-3.5 sm:p-4 rounded-xl sm:rounded-2xl bg-slate-50 border border-slate-200 flex flex-col justify-between">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <span className="text-[9px] xs:text-[10px] uppercase font-extrabold text-indigo-600 tracking-wider">
                         {sub.code || 'SUB'} • {sub.type || 'Theory'}
                       </span>
-                      <h5 className="font-bold text-slate-900 text-sm mt-0.5">{sub.name}</h5>
+                      <h5 className="font-bold text-slate-900 text-xs sm:text-sm mt-0.5 truncate">{sub.name}</h5>
                     </div>
-                    <span className={`text-xs font-extrabold px-2.5 py-0.5 rounded-full ${
+                    <span className={`text-xs font-extrabold px-2 py-0.5 rounded-full flex-shrink-0 ${
                       sub.isSafe ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
                     }`}>
                       {sub.percentage}%
                     </span>
                   </div>
 
-                  <div className="mt-3">
+                  <div className="mt-2.5 sm:mt-3">
                     <div className="w-full h-2 rounded-full bg-slate-200 overflow-hidden">
                       <div
                         className={`h-full rounded-full transition-all duration-500 ${
@@ -346,7 +346,7 @@ export function StudentPortal({ student, device }) {
                         style={{ width: `${Math.min(100, sub.percentage)}%` }}
                       ></div>
                     </div>
-                    <div className="flex justify-between text-[11px] text-slate-500 mt-1 font-medium">
+                    <div className="flex justify-between text-[10px] xs:text-[11px] text-slate-500 mt-1 font-medium">
                       <span>{sub.attended} / {sub.total} classes attended</span>
                       <span>{sub.isSafe ? 'Safe' : 'Low (<75%)'}</span>
                     </div>
@@ -359,36 +359,36 @@ export function StudentPortal({ student, device }) {
         </div>
       )}
 
-      {/* VIEW 2: DEDICATED STUDENT PROFILE & 1-PHONE HARDWARE LOCK */}
+      {/* VIEW 2: DEDICATED STUDENT PROFILE */}
       {activeTab === 'profile' && (
-        <div className="bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 shadow-sm space-y-6">
-          <div className="flex items-center justify-between pb-4 border-b border-slate-200">
-            <div>
-              <span className="text-xs font-bold uppercase tracking-wider text-indigo-600">Student Identity & Security</span>
-              <h3 className="text-xl font-extrabold text-slate-900">Personal Academic Profile</h3>
-              <p className="text-xs text-slate-500 mt-0.5">Verified via Physical College ID Card</p>
+        <div className="bg-white border border-slate-200 rounded-2xl sm:rounded-3xl p-4 xs:p-6 sm:p-8 shadow-sm space-y-4 sm:space-y-6">
+          <div className="flex items-center justify-between pb-3.5 border-b border-slate-200">
+            <div className="min-w-0 pr-2">
+              <span className="text-[10px] xs:text-xs font-bold uppercase tracking-wider text-indigo-600">Student Identity & Security</span>
+              <h3 className="text-base xs:text-lg sm:text-xl font-extrabold text-slate-900 truncate">Personal Academic Profile</h3>
+              <p className="text-[11px] text-slate-500 mt-0.5">Verified via Physical College ID Card</p>
             </div>
-            <span className="px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold flex items-center space-x-1">
+            <span className="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] xs:text-xs font-bold flex items-center space-x-1 flex-shrink-0">
               <ShieldCheck className="w-3.5 h-3.5" />
-              <span>Identity Verified</span>
+              <span>Verified</span>
             </span>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6">
             
             {/* ID Card Photo Preview */}
-            <div className="flex flex-col items-center justify-center p-5 rounded-2xl bg-slate-50 border border-slate-200 text-center">
+            <div className="flex flex-col items-center justify-center p-4 sm:p-5 rounded-2xl bg-slate-50 border border-slate-200 text-center">
               {student.idCardPhoto ? (
                 <div>
                   <img
                     src={student.idCardPhoto}
                     alt="Physical ID Card"
                     onClick={() => setShowIdModal(true)}
-                    className="w-40 h-28 object-cover rounded-xl border border-slate-300 shadow-md cursor-pointer hover:opacity-90 transition mx-auto mb-2"
+                    className="w-36 h-24 xs:w-40 xs:h-28 object-cover rounded-xl border border-slate-300 shadow-md cursor-pointer hover:opacity-90 transition mx-auto mb-2"
                   />
                   <button
                     onClick={() => setShowIdModal(true)}
-                    className="text-xs font-bold text-indigo-600 hover:text-indigo-800 flex items-center justify-center space-x-1 mx-auto"
+                    className="text-xs font-bold text-indigo-600 hover:text-indigo-800 flex items-center justify-center space-x-1 mx-auto touch-target"
                   >
                     <ExternalLink className="w-3 h-3" />
                     <span>View Full ID Card</span>
@@ -400,50 +400,50 @@ export function StudentPortal({ student, device }) {
             </div>
 
             {/* Academic Details Matrix */}
-            <div className="md:col-span-2 grid grid-cols-2 gap-4 text-xs sm:text-sm">
-              <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
-                <span className="text-slate-400 text-xs block">Full Student Name</span>
-                <span className="font-extrabold text-slate-900 text-base">{student.name}</span>
+            <div className="md:col-span-2 grid grid-cols-1 xs:grid-cols-2 gap-2.5 sm:gap-4 text-xs sm:text-sm">
+              <div className="p-3 sm:p-3.5 rounded-xl bg-slate-50 border border-slate-200">
+                <span className="text-slate-400 text-[11px] block">Full Student Name</span>
+                <span className="font-extrabold text-slate-900 text-sm xs:text-base break-words">{student.name}</span>
               </div>
 
-              <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
-                <span className="text-slate-400 text-xs block">Roll Number</span>
-                <span className="font-extrabold text-slate-900 text-base">#{student.rollNo}</span>
+              <div className="p-3 sm:p-3.5 rounded-xl bg-slate-50 border border-slate-200">
+                <span className="text-slate-400 text-[11px] block">Roll Number</span>
+                <span className="font-extrabold text-slate-900 text-sm xs:text-base">#{student.rollNo}</span>
               </div>
 
-              <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
-                <span className="text-slate-400 text-xs block">Permanent PRN / ID</span>
-                <span className="font-bold text-slate-800">{student.prn}</span>
+              <div className="p-3 sm:p-3.5 rounded-xl bg-slate-50 border border-slate-200">
+                <span className="text-slate-400 text-[11px] block">Permanent PRN / ID</span>
+                <span className="font-bold text-slate-800 break-all">{student.prn}</span>
               </div>
 
-              <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
-                <span className="text-slate-400 text-xs block">Class & Division</span>
+              <div className="p-3 sm:p-3.5 rounded-xl bg-slate-50 border border-slate-200">
+                <span className="text-slate-400 text-[11px] block">Class & Division</span>
                 <span className="font-bold text-slate-800">{student.division} (Batch {student.batch})</span>
               </div>
 
-              <div className="col-span-2 p-3.5 rounded-xl bg-slate-50 border border-slate-200">
-                <span className="text-slate-400 text-xs block">Department</span>
-                <span className="font-bold text-slate-900">{departmentName}</span>
+              <div className="col-span-1 xs:col-span-2 p-3 sm:p-3.5 rounded-xl bg-slate-50 border border-slate-200">
+                <span className="text-slate-400 text-[11px] block">Department</span>
+                <span className="font-bold text-slate-900 break-words">{departmentName}</span>
               </div>
             </div>
 
           </div>
 
           {/* HARDWARE DEVICE BINDING SECURITY BADGE */}
-          <div className="p-5 rounded-2xl bg-indigo-50/60 border border-indigo-200 space-y-2">
-            <div className="flex items-center space-x-2 text-indigo-950 font-extrabold text-sm">
-              <Smartphone className="w-4 h-4 text-indigo-600" />
-              <span>1-Student = 1-Mobile Phone Hardware Security Lock</span>
+          <div className="p-4 sm:p-5 rounded-2xl bg-indigo-50/60 border border-indigo-200 space-y-2">
+            <div className="flex items-center space-x-2 text-indigo-950 font-extrabold text-xs xs:text-sm">
+              <Smartphone className="w-4 h-4 text-indigo-600 flex-shrink-0" />
+              <span>1-Student = 1-Mobile Phone Hardware Lock</span>
             </div>
-            <p className="text-xs text-indigo-900/80 leading-relaxed font-medium">
-              🔒 Your student profile is permanently bound to this physical smartphone. Logging into other phones or allowing friends to use this phone for attendance is blocked to prevent proxy marking.
+            <p className="text-[11px] xs:text-xs text-indigo-900/80 leading-relaxed font-medium">
+              🔒 Bound to this physical smartphone. Proxy attendance from other devices is blocked.
             </p>
-            <div className="pt-2 text-[11px] text-slate-500 font-mono flex items-center space-x-2">
-              <span>Device Hash:</span>
-              <span className="bg-white px-2 py-0.5 rounded border border-indigo-200 text-slate-700">
+            <div className="pt-1.5 text-[10px] xs:text-[11px] text-slate-500 font-mono flex items-center space-x-2 flex-wrap gap-1">
+              <span>Device:</span>
+              <span className="bg-white px-2 py-0.5 rounded border border-indigo-200 text-slate-700 break-all">
                 {device?.deviceId ? `${device.deviceId.substring(0, 16)}...` : 'LOCKED-TO-PHONE'}
               </span>
-              <span className="text-emerald-600 font-bold">● Active Hardware Lock</span>
+              <span className="text-emerald-600 font-bold">● Active Lock</span>
             </div>
           </div>
         </div>
@@ -451,15 +451,15 @@ export function StudentPortal({ student, device }) {
 
       {/* ID CARD FULL PHOTO MODAL */}
       {showIdModal && student.idCardPhoto && (
-        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white border border-slate-200 rounded-3xl p-6 max-w-sm w-full shadow-2xl text-center">
-            <h3 className="text-base font-extrabold text-slate-900 mb-3">Verified College ID Card</h3>
-            <img src={student.idCardPhoto} alt="Student ID" className="w-full rounded-2xl border border-slate-200 shadow-md mb-4" />
+        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-50 flex items-center justify-center p-3 xs:p-4">
+          <div className="bg-white border border-slate-200 rounded-2xl sm:rounded-3xl p-4 xs:p-6 max-w-sm w-full max-h-[90vh] overflow-y-auto shadow-2xl text-center">
+            <h3 className="text-sm xs:text-base font-extrabold text-slate-900 mb-2">Verified College ID Card</h3>
+            <img src={student.idCardPhoto} alt="Student ID" className="w-full max-h-[60vh] object-contain rounded-xl border border-slate-200 shadow-md mb-3" />
             <button
               onClick={() => setShowIdModal(false)}
-              className="w-full py-2.5 rounded-xl bg-slate-800 text-white font-bold text-xs"
+              className="w-full py-2.5 rounded-xl bg-slate-800 text-white font-bold text-xs touch-target flex items-center justify-center"
             >
-              Close
+              Close Inspector
             </button>
           </div>
         </div>

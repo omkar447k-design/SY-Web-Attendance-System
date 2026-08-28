@@ -3,15 +3,36 @@
 @tailwind utilities;
 
 @layer base {
+  html {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    overflow-x: hidden;
+  }
+  
   body {
     @apply bg-slate-50 text-slate-800 antialiased;
+    overflow-x: hidden;
+    min-height: 100vh;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  /* Prevent automatic zoom on input focus on iOS Safari */
+  @media screen and (max-width: 767px) {
+    input[type="text"],
+    input[type="number"],
+    input[type="password"],
+    input[type="email"],
+    select,
+    textarea {
+      font-size: 16px !important;
+    }
   }
 }
 
 /* Custom crisp scrollbars */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
 }
 ::-webkit-scrollbar-track {
   background: #f1f5f9;
@@ -22,6 +43,12 @@
 }
 ::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
+}
+
+/* Touch friendly helpers */
+.touch-target {
+  min-height: 44px;
+  min-width: 44px;
 }
 
 /* Subtle, clean soft shadows */
