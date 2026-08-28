@@ -6,37 +6,94 @@ export class StudentController {
   static login(req, res) {
     const { rollNo, prn, name, idCardPhoto, department = 'comp', division = 'SY-A', deviceId, fingerprint } = req.body;
     
-    if (!rollNo) {
-      return res.status(400).json({ success: false, error: 'Roll Number is required' });
-    }
-
     if (!idCardPhoto || typeof idCardPhoto !== 'string' || idCardPhoto.length < 100) {
       return res.status(400).json({
         success: false,
-        error: '🛑 Mandatory College ID Card: Please upload / snap a clear photo of your physical college ID card to complete registration.'
+        error: '🛑 Mandatory ID Card: Please upload a clear photo of your physical college ID card.'
       });
     }
 
+    if (!rollNo || Number(rollNo) <= 0) {
+      return res.status(400).json({ success: false, error: '🛑 Mandatory Field: Valid Roll Number is required.' });
+    }
+
+    if (!prn || !String(prn).trim() || String(prn).trim().length < 4) {
+      return res.status(400).json({ success: false, error: '🛑 Mandatory Field: Valid PRN / Student ID is required.' });
+    }
+
     if (!name || !name.trim() || name.trim().length < 3) {
-      return res.status(400).json({
-        success: false,
-        error: '🛑 Name Verification Required: Please ensure your full student name is clearly readable from the ID card.'
-      });
+      return res.status(400).json({ success: false, error: '🛑 Mandatory Field: Verified Student Name is required from ID card.' });
+    }
+
+    if (!department) {
+      return res.status(400).json({ success: false, error: '🛑 Mandatory Field: Engineering Department is required.' });
+    }
+
+    if (!division) {
+      return res.status(400).json({ success: false, error: '🛑 Mandatory Field: Division (SY-A/B/C) is required.' });
     }
 
     const students = db.get('students');
     const numericRoll = Number(rollNo);
+    const cleanPrn = String(prn).trim().toUpperCase();
     const resolvedName = name.trim();
-    const cleanPrn = prn && String(prn).trim() ? String(prn).trim() : `12251ET${String(numericRoll).padStart(3, '0')}`;
-    
+
+    const duplicatePrn = students.find(
+      s => s.prn === cleanPrn && !(s.rollNo === numericRoll && s.division === division && (s.department === department || !s.department))
+    );
+    if (duplicatePrn) {
+      return res.status(403).json({
+        success: false,
+        error: `🛑 Duplicate PRN Blocked: PRN ${cleanPrn} is already registered to Roll No. ${duplicatePrn.rollNo} (${duplicatePrn.name}) in ${duplicatePrn.department?.toUpperCase()} - ${duplicatePrn.division}.`
+      });
+    }
+
     let student = students.find(
       s => s.rollNo === numericRoll && s.division === division && (s.department === department || !s.department)
     );
 
-    let isNewRegistration = false;
+    if (student && student.boundDeviceId) {
+      if (student.boundDeviceId !== deviceId || student.boundFingerprint !== fingerprint) {
+        return res.status(403).json({
+          success: false,
+          error: `🛑 Account Already Bound: Roll No. ${student.rollNo} (${student.name}) is already registered and locked to another smartphone. To switch phones, contact your HOD.`
+        });
+      }
+
+      db.addLog({
+        type: 'STUDENT_LOGIN',
+        studentId: student.id,
+        studentName: student.name,
+        rollNo: student.rollNo,
+        prn: student.prn,
+        department: student.department || department,
+        division: student.division,
+        batch: student.batch,
+        idCardPhoto: student.idCardPhoto,
+        deviceId: deviceId,
+        status: 'AUTHORIZED_RETURNING_STUDENT',
+        details: 'Returning student verified on locked phone'
+      });
+
+      return res.json({
+        success: true,
+        student: {
+          id: student.id,
+          rollNo: student.rollNo,
+          name: student.name,
+          department: student.department || department,
+          division: student.division,
+          batch: student.batch,
+          prn: student.prn,
+          idCardPhoto: student.idCardPhoto,
+          boundDeviceId: student.boundDeviceId,
+          boundAt: student.boundAt
+        },
+        token: `std_tok_${student.id}_${Date.now()}`
+      });
+    }
 
     if (!student) {
-      isNewRegistration = true;
       student = {
         id: `S_${department}_${division}_${numericRoll}`,
         rollNo: numericRoll,
@@ -55,7 +112,7 @@ export class StudentController {
       db.set('students', students);
     } else {
       student.name = resolvedName;
-      if (prn && String(prn).trim()) student.prn = String(prn).trim();
+      student.prn = cleanPrn;
       student.idCardPhoto = idCardPhoto;
       db.set('students', students);
     }
@@ -66,7 +123,7 @@ export class StudentController {
     }
 
     db.addLog({
-      type: isNewRegistration ? 'NEW_STUDENT_REGISTRATION' : 'STUDENT_LOGIN',
+      type: 'NEW_STUDENT_REGISTRATION',
       studentId: student.id,
       studentName: student.name,
       rollNo: student.rollNo,
@@ -77,7 +134,7 @@ export class StudentController {
       idCardPhoto: student.idCardPhoto,
       deviceId: deviceId,
       status: 'VERIFIED_PHYSICAL_ID_OCR',
-      details: isNewRegistration ? 'New student bound device via ID Card' : 'Student authenticated on verified smartphone'
+      details: 'New student bound phone via verified ID Card'
     });
 
     res.json({

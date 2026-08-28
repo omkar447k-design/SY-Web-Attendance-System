@@ -143,6 +143,11 @@ export function Login({ onLoginSuccess }) {
   const [prn, setPrn] = useState('');
   const [name, setName] = useState('');
 
+  // Lock status (Once extracted from ID card, fields are LOCKED and CANNOT be altered)
+  const [isNameLocked, setIsNameLocked] = useState(false);
+  const [isPrnLocked, setIsPrnLocked] = useState(false);
+  const [isDeptLocked, setIsDeptLocked] = useState(false);
+
   // ID Card Upload & AI Extraction State
   const [idCardPreview, setIdCardPreview] = useState(null);
   const [ocrScanning, setOcrScanning] = useState(false);
@@ -159,7 +164,6 @@ export function Login({ onLoginSuccess }) {
   const [customSubject, setCustomSubject] = useState('');
   const [teacherBatch, setTeacherBatch] = useState('All');
   
-  // Teacher individual password state
   const [teacherIsFirstTime, setTeacherIsFirstTime] = useState(false);
   const [teacherPassword, setTeacherPassword] = useState('');
   const [teacherNewPassword, setTeacherNewPassword] = useState('');
@@ -187,7 +191,6 @@ export function Login({ onLoginSuccess }) {
     }
   }, []);
 
-  // Check teacher status when name changes
   useEffect(() => {
     if (activeTab === 'teacher' && teacherName.trim()) {
       api.checkTeacherStatus({ teacherName: teacherName.trim(), department: teacherDept })
@@ -216,7 +219,7 @@ export function Login({ onLoginSuccess }) {
     }
   };
 
-  // AI OCR SCANNER (Extracts Name, PRN, and Department)
+  // AI OCR SCANNER (Overwrites previous text & Locks fields to prevent tampering)
   const handleIdCardSelected = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -246,28 +249,43 @@ export function Login({ onLoginSuccess }) {
       const { name: detectedName, prn: detectedPrn, departmentId: detectedDept } = parseIdCardDetails(ret.data.text);
 
       let extractedItems = [];
+
+      // 1. OVERWRITE & LOCK FULL NAME
       if (detectedName) {
         setName(detectedName);
+        setIsNameLocked(true);
         extractedItems.push(`Name: "${detectedName}"`);
+      } else {
+        setIsNameLocked(false);
       }
+
+      // 2. OVERWRITE & LOCK PRN
       if (detectedPrn) {
         setPrn(detectedPrn);
+        setIsPrnLocked(true);
         extractedItems.push(`PRN: "${detectedPrn}"`);
+      } else {
+        setIsPrnLocked(false);
       }
+
+      // 3. OVERWRITE & LOCK DEPARTMENT
       if (detectedDept) {
         setDepartment(detectedDept);
+        setIsDeptLocked(true);
         const deptObj = DEPARTMENTS.find(d => d.id === detectedDept);
         extractedItems.push(`Dept: ${deptObj?.code || detectedDept.toUpperCase()}`);
+      } else {
+        setIsDeptLocked(false);
       }
 
       if (extractedItems.length > 0) {
-        setOcrSuccessMsg(`✅ AI Auto-Extracted from ID: ${extractedItems.join(' • ')}`);
+        setOcrSuccessMsg(`🔒 Verified & Locked from ID: ${extractedItems.join(' • ')}`);
       } else {
-        setOcrSuccessMsg('📷 ID photo attached. Please verify extracted fields.');
+        setOcrSuccessMsg('📷 ID photo attached. Please fill all required fields.');
       }
     } catch (err) {
       console.error('OCR Error:', err);
-      setOcrSuccessMsg('📷 ID photo attached. Please verify extracted fields.');
+      setOcrSuccessMsg('📷 ID photo attached. Please fill all required fields.');
     } finally {
       setOcrScanning(false);
     }
@@ -278,25 +296,46 @@ export function Login({ onLoginSuccess }) {
     setOcrSuccessMsg('');
     setName('');
     setPrn('');
+    setIsNameLocked(false);
+    setIsPrnLocked(false);
+    setIsDeptLocked(false);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
+
+  // Check if all student compulsory fields are filled
+  const isStudentFormComplete = Boolean(
+    idCardPreview &&
+    rollNo &&
+    Number(rollNo) > 0 &&
+    prn &&
+    prn.trim().length >= 4 &&
+    name &&
+    name.trim().length >= 3 &&
+    department &&
+    division
+  );
 
   const handleStudentLogin = async (e) => {
     e.preventDefault();
     setError('');
 
     if (!idCardPreview) {
-      setError('🛑 College ID Card Required: Please snap / upload a clear photo of your physical college ID card.');
+      setError('🛑 Mandatory Field: College ID Card photo is compulsory.');
       return;
     }
 
     if (!rollNo || Number(rollNo) <= 0) {
-      setError('🛑 Roll Number Required: Please type your manual Roll Number.');
+      setError('🛑 Mandatory Field: Roll Number is compulsory.');
+      return;
+    }
+
+    if (!prn || prn.trim().length < 4) {
+      setError('🛑 Mandatory Field: PRN / Student ID is compulsory.');
       return;
     }
 
     if (!name || name.trim().length < 3) {
-      setError('🛑 Name Required: Please ensure your student name is readable from your ID card.');
+      setError('🛑 Mandatory Field: Full Student Name is compulsory.');
       return;
     }
 
@@ -306,7 +345,7 @@ export function Login({ onLoginSuccess }) {
       const { deviceId, fingerprint } = await getDeviceIdentity();
       const res = await api.studentLogin({
         rollNo: Number(rollNo),
-        prn: prn ? String(prn).trim() : undefined,
+        prn: prn.trim().toUpperCase(),
         name: name.trim(),
         idCardPhoto: idCardPreview,
         department,
@@ -325,7 +364,6 @@ export function Login({ onLoginSuccess }) {
     }
   };
 
-  // TEACHER AUTH (Individual Password Setup & Login)
   const handleTeacherLogin = async (e) => {
     e.preventDefault();
     if (!teacherName.trim()) return setError('Please enter Faculty Name');
@@ -488,18 +526,18 @@ export function Login({ onLoginSuccess }) {
             </div>
           )}
 
-          {/* STUDENT LOGIN TAB */}
+          {/* STUDENT LOGIN TAB (ALL FIELDS COMPULSORY & EXTRACTED FIELDS LOCKED) */}
           {activeTab === 'student' && (
             <form onSubmit={handleStudentLogin} className="space-y-4">
               
-              {/* MANDATORY ID CARD UPLOAD & AI OCR (iOS & Android) */}
+              {/* 1. MANDATORY ID CARD UPLOAD & AI AUTO-EXTRACTION */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center justify-between">
                   <span className="flex items-center space-x-1.5 text-indigo-700">
                     <Camera className="w-3.5 h-3.5" />
-                    <span>Upload / Snap College ID Card <span className="text-rose-500 font-bold">*REQUIRED</span></span>
+                    <span>1. Upload College ID Card <span className="text-rose-500 font-bold">*COMPULSORY</span></span>
                   </span>
-                  <span className="text-[10px] text-slate-400 font-normal normal-case">iOS & Android</span>
+                  <span className="text-[10px] text-slate-400 font-normal normal-case">iOS & Android Ready</span>
                 </label>
 
                 <input
@@ -524,7 +562,7 @@ export function Login({ onLoginSuccess }) {
                         📸 Tap to Snap or Choose ID from Gallery
                       </p>
                       <p className="text-[11px] text-indigo-700 mt-0.5 font-medium">
-                        AI will auto-extract your Name, PRN & Department directly from your ID card!
+                        AI will auto-extract & lock your Name, PRN & Department!
                       </p>
                     </div>
                   </button>
@@ -541,13 +579,13 @@ export function Login({ onLoginSuccess }) {
                           <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
                           <span className="truncate">Physical ID Card Attached</span>
                         </div>
-                        <p className="text-[11px] text-slate-500 mt-0.5">Verified & Saved for HOD Inspection</p>
+                        <p className="text-[11px] text-slate-500 mt-0.5">Extracted data is locked to prevent tampering</p>
                       </div>
                       <button
                         type="button"
                         onClick={handleRemoveIdPhoto}
                         className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 border border-slate-200 transition"
-                        title="Remove ID Card"
+                        title="Remove ID Card and Unlock Fields"
                       >
                         <X className="w-4 h-4" />
                       </button>
@@ -581,21 +619,30 @@ export function Login({ onLoginSuccess }) {
                 )}
               </div>
 
-              {/* Department Dropdown (Auto-selected from ID card) */}
+              {/* 2. DEPARTMENT (LOCKED WHEN EXTRACTED) */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center justify-between">
                   <span className="flex items-center space-x-1.5">
                     <Building2 className="w-3.5 h-3.5 text-indigo-600" />
-                    <span>Engineering Department</span>
+                    <span>2. Engineering Department <span className="text-rose-500 font-bold">*COMPULSORY</span></span>
                   </span>
-                  <span className="text-[10px] text-indigo-600 font-semibold normal-case">
-                    {idCardPreview ? '✨ Auto-Matched from ID' : ''}
-                  </span>
+                  {isDeptLocked && (
+                    <span className="text-[10px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 font-bold flex items-center space-x-1">
+                      <Lock className="w-2.5 h-2.5" />
+                      <span>Locked from ID</span>
+                    </span>
+                  )}
                 </label>
                 <select
                   value={department}
+                  disabled={isDeptLocked}
                   onChange={(e) => setDepartment(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 font-semibold focus:border-indigo-600 focus:bg-white outline-none transition"
+                  className={`w-full border rounded-xl px-3.5 py-2.5 text-sm font-semibold outline-none transition ${
+                    isDeptLocked
+                      ? 'bg-slate-100 border-slate-300 text-slate-700 cursor-not-allowed'
+                      : 'bg-slate-50 border-slate-300 text-slate-900 focus:border-indigo-600'
+                  }`}
+                  required
                 >
                   {DEPARTMENTS.map((dept) => (
                     <option key={dept.id} value={dept.id}>
@@ -605,10 +652,10 @@ export function Login({ onLoginSuccess }) {
                 </select>
               </div>
 
-              {/* Division Selection Bar */}
+              {/* 3. DIVISION (COMPULSORY) */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                  Select Division
+                  3. Select Division <span className="text-rose-500 font-bold">*COMPULSORY</span>
                 </label>
                 <div className="grid grid-cols-3 gap-2">
                   {DIVISIONS.map((div) => (
@@ -628,15 +675,14 @@ export function Login({ onLoginSuccess }) {
                 </div>
               </div>
 
-              {/* MANUAL ROLL NUMBER + AUTO-EXTRACTED PRN */}
+              {/* 4. MANUAL ROLL NUMBER + 5. AUTO-EXTRACTED & LOCKED PRN */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center justify-between">
                     <span className="flex items-center space-x-1">
                       <Hash className="w-3.5 h-3.5 text-indigo-600" />
-                      <span>Roll Number</span>
+                      <span>4. Roll Number <span className="text-rose-500 font-bold">*COMPULSORY</span></span>
                     </span>
-                    <span className="text-[10px] text-slate-400 font-normal normal-case">(Type Manually)</span>
                   </label>
                   <input
                     type="number"
@@ -644,7 +690,7 @@ export function Login({ onLoginSuccess }) {
                     max="120"
                     value={rollNo}
                     onChange={(e) => setRollNo(e.target.value)}
-                    placeholder="e.g. 24"
+                    placeholder="Type e.g. 24"
                     className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-base text-slate-900 font-bold focus:border-indigo-600 focus:bg-white outline-none"
                     required
                   />
@@ -652,35 +698,52 @@ export function Login({ onLoginSuccess }) {
 
                 <div>
                   <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center justify-between">
-                    <span>PRN / Student ID</span>
-                    <span className="text-[10px] text-indigo-600 font-semibold normal-case">
-                      {prn ? '✨ Auto-Filled from ID' : ''}
-                    </span>
+                    <span>5. PRN <span className="text-rose-500 font-bold">*COMPULSORY</span></span>
+                    {isPrnLocked && (
+                      <span className="text-[10px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 font-bold flex items-center space-x-0.5">
+                        <Lock className="w-2.5 h-2.5" />
+                        <span>Locked</span>
+                      </span>
+                    )}
                   </label>
                   <input
                     type="text"
                     value={prn}
+                    readOnly={isPrnLocked}
                     onChange={(e) => setPrn(e.target.value)}
                     placeholder="Auto-extracted from ID"
-                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 font-bold focus:border-indigo-600 focus:bg-white outline-none"
+                    className={`w-full border rounded-xl px-3.5 py-2.5 text-sm font-bold outline-none ${
+                      isPrnLocked
+                        ? 'bg-slate-100 border-slate-300 text-slate-700 cursor-not-allowed'
+                        : 'bg-slate-50 border-slate-300 text-slate-900 focus:border-indigo-600'
+                    }`}
+                    required
                   />
                 </div>
               </div>
 
-              {/* Student Name Input (Auto-Extracted from ID) */}
+              {/* 6. FULL NAME (LOCKED WHEN EXTRACTED FROM ID) */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center justify-between">
-                  <span>Student Full Name</span>
-                  <span className="text-[10px] text-indigo-600 font-semibold normal-case">
-                    {name ? '✨ Verified from ID Card' : '(Auto-Fills from ID Card)'}
-                  </span>
+                  <span>6. Student Full Name <span className="text-rose-500 font-bold">*COMPULSORY</span></span>
+                  {isNameLocked && (
+                    <span className="text-[10px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 font-bold flex items-center space-x-0.5">
+                      <Lock className="w-2.5 h-2.5" />
+                      <span>Locked from ID</span>
+                    </span>
+                  )}
                 </label>
                 <input
                   type="text"
                   value={name}
+                  readOnly={isNameLocked}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="Auto-extracted from ID Card"
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 font-bold focus:border-indigo-600 focus:bg-white outline-none"
+                  className={`w-full border rounded-xl px-3.5 py-2.5 text-sm font-bold outline-none ${
+                    isNameLocked
+                      ? 'bg-slate-100 border-slate-300 text-slate-700 cursor-not-allowed'
+                      : 'bg-slate-50 border-slate-300 text-slate-900 focus:border-indigo-600'
+                  }`}
                   required
                 />
               </div>
@@ -688,28 +751,27 @@ export function Login({ onLoginSuccess }) {
               <div className="pt-2">
                 <button
                   type="submit"
-                  disabled={loading || ocrScanning || !idCardPreview}
+                  disabled={loading || ocrScanning || !isStudentFormComplete}
                   className="w-full py-3.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm shadow-lg shadow-indigo-200 flex items-center justify-center space-x-2 transition-all active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   <ShieldCheck className="w-4 h-4" />
-                  <span>{loading ? 'Binding Phone & Entering...' : 'Verify ID & Enter Student Portal'}</span>
+                  <span>{loading ? 'Binding Phone & Entering...' : 'Verify All Fields & Enter Student Portal'}</span>
                   <ArrowRight className="w-4 h-4" />
                 </button>
               </div>
 
               <div className="text-center pt-1">
                 <p className="text-[11px] text-slate-500 font-medium">
-                  🔒 1-Device Binding: Your smartphone will be permanently locked to this Roll Number & ID.
+                  🔒 1-Device Binding: All fields must match your physical ID card to bind your phone.
                 </p>
               </div>
             </form>
           )}
 
-          {/* TEACHER / FACULTY TAB (Individual Private Password Setup & Login) */}
+          {/* TEACHER / FACULTY TAB */}
           {activeTab === 'teacher' && (
             <form onSubmit={handleTeacherLogin} className="space-y-4">
               
-              {/* Faculty Full Name */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center space-x-1.5">
                   <User className="w-3.5 h-3.5 text-indigo-600" />
@@ -725,7 +787,6 @@ export function Login({ onLoginSuccess }) {
                 />
               </div>
 
-              {/* Department Dropdown */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center space-x-1.5">
                   <Building2 className="w-3.5 h-3.5 text-indigo-600" />
@@ -744,7 +805,6 @@ export function Login({ onLoginSuccess }) {
                 </select>
               </div>
 
-              {/* Multi-Division Checkboxes (SY-A, SY-B, SY-C) */}
               <div>
                 <div className="flex items-center justify-between mb-1.5">
                   <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
@@ -781,7 +841,6 @@ export function Login({ onLoginSuccess }) {
                 </div>
               </div>
 
-              {/* Subject Selection / Custom Subject */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center space-x-1.5">
                   <BookOpen className="w-3.5 h-3.5 text-indigo-600" />
@@ -814,7 +873,6 @@ export function Login({ onLoginSuccess }) {
                 )}
               </div>
 
-              {/* Batch Selection */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
                   Lecture Type / Batch
@@ -831,7 +889,6 @@ export function Login({ onLoginSuccess }) {
                 </select>
               </div>
 
-              {/* INDIVIDUAL FACULTY PASSWORD (First-Time Setup vs Normal Login) */}
               <div className="pt-1">
                 {teacherIsFirstTime ? (
                   <div className="p-3.5 rounded-2xl bg-indigo-50/70 border border-indigo-200 space-y-2.5">
@@ -923,7 +980,6 @@ export function Login({ onLoginSuccess }) {
               <X className="w-4 h-4" />
             </button>
 
-            {/* STAGE 1: GATEKEEPER PASSCODE */}
             {gatekeeperStage === 1 && (
               <div>
                 <div className="text-center mb-5">
@@ -967,7 +1023,6 @@ export function Login({ onLoginSuccess }) {
               </div>
             )}
 
-            {/* STAGE 2: DEPARTMENT HOD LOGIN & FIRST-TIME SETUP */}
             {gatekeeperStage === 2 && (
               <div>
                 <div className="text-center mb-5">
