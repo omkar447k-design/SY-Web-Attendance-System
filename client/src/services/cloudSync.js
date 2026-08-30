@@ -105,7 +105,7 @@ export const CloudSync = {
     return filtered;
   },
 
-  // 3. Fetch Conducted Lectures from Cloud
+  // 3. Fetch Conducted Lectures from Cloud with Automatic Deduplication
   getSessions: async (department = null) => {
     let cloudSessions = [];
     try {
@@ -120,19 +120,41 @@ export const CloudSync = {
     const localSessions = getLocal(STORAGE_KEYS.SESSIONS);
     const map = new Map();
 
-    localSessions.forEach(s => map.set(s.id, s));
-    cloudSessions.forEach(s => map.set(s.id, { ...(map.get(s.id) || {}), ...s }));
+    // Deduplicate by normalized session key (Subject + Dept + Div + Time)
+    const all = [...localSessions, ...cloudSessions];
+    all.forEach(s => {
+      if (!s) return;
+      const timeKey = `${s.department || 'entc'}_${s.division || 'SY-A'}_${s.subjectName || 'Lecture'}_${s.startTime ? s.startTime.substring(0, 16) : s.date}`;
+      const existing = map.get(timeKey);
 
-    const merged = Array.from(map.values());
+      if (!existing) {
+        map.set(timeKey, s);
+      } else {
+        // Merge and prioritize the session with more attendees
+        const existingAttendees = existing.attendees || [];
+        const newAttendees = s.attendees || [];
+        const mergedAttendees = newAttendees.length >= existingAttendees.length ? newAttendees : existingAttendees;
+        const maxPresent = Math.max(existing.totalPresent || 0, s.totalPresent || 0, mergedAttendees.length);
+
+        map.set(timeKey, {
+          ...existing,
+          ...s,
+          totalPresent: maxPresent,
+          attendees: mergedAttendees,
+          status: 'closed'
+        });
+      }
+    });
+
+    let merged = Array.from(map.values());
     merged.sort((a, b) => new Date(b.startTime || b.date || 0) - new Date(a.startTime || a.date || 0));
     setLocal(STORAGE_KEYS.SESSIONS, merged);
 
-    let filtered = merged;
     if (department && department !== 'all') {
-      filtered = filtered.filter(s => s.department === department);
+      merged = merged.filter(s => s.department === department);
     }
 
-    return filtered;
+    return merged;
   },
 
   // 4. Save/Register Student and Broadcast to Cloud
@@ -147,9 +169,7 @@ export const CloudSync = {
     }
     setLocal(STORAGE_KEYS.STUDENTS, local);
 
-    // Push to Cloud
     try {
-      // Don't send large base64 ID photo to cloud payload to keep requests instant
       const studentToCloud = {
         id: student.id,
         rollNo: student.rollNo,
@@ -217,11 +237,17 @@ export const CloudSync = {
     }
   },
 
-  // 6. Save Conducted Lecture Session and Broadcast to Cloud
+  // 6. Save Finalized Conducted Lecture Session (Deduplicated)
   saveSession: async (session) => {
     if (!session || !session.id) return;
     const local = getLocal(STORAGE_KEYS.SESSIONS);
-    const idx = local.findIndex(s => s.id === session.id);
+    const timeKey = `${session.department || 'entc'}_${session.division || 'SY-A'}_${session.subjectName || 'Lecture'}_${session.startTime ? session.startTime.substring(0, 16) : session.date}`;
+    
+    const idx = local.findIndex(s => {
+      const existingKey = `${s.department || 'entc'}_${s.division || 'SY-A'}_${s.subjectName || 'Lecture'}_${s.startTime ? s.startTime.substring(0, 16) : s.date}`;
+      return s.id === session.id || existingKey === timeKey;
+    });
+
     if (idx >= 0) {
       local[idx] = { ...local[idx], ...session };
     } else {
@@ -240,7 +266,14 @@ export const CloudSync = {
     }
   },
 
-  // 7. Delete Student Locally & Reset in Cloud
+  // 7. Delete Session
+  deleteSession: (sessionId) => {
+    let local = getLocal(STORAGE_KEYS.SESSIONS);
+    local = local.filter(s => s.id !== sessionId);
+    setLocal(STORAGE_KEYS.SESSIONS, local);
+  },
+
+  // 8. Delete Student Locally & Reset in Cloud
   deleteStudent: (studentId) => {
     let list = getLocal(STORAGE_KEYS.STUDENTS);
     list = list.filter(s => s.id !== studentId && s.rollNo !== Number(studentId));
@@ -251,7 +284,7 @@ export const CloudSync = {
     setLocal(STORAGE_KEYS.LOGS, logs);
   },
 
-  // 8. Reset Device Binding
+  // 9. Reset Device Binding
   resetDevice: (studentId) => {
     const list = getLocal(STORAGE_KEYS.STUDENTS);
     const target = list.find(s => s.id === studentId || s.rollNo === Number(studentId));

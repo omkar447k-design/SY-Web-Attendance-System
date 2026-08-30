@@ -129,6 +129,17 @@ export function AdminPortal({ hodProfile, onLaunchLectureAsHod }) {
     }
   };
 
+  const handleDeleteConductedLecture = async (sessionId, subjectName) => {
+    if (!window.confirm(`Delete lecture record for ${subjectName}? This will remove it from the conducted archive.`)) return;
+    try {
+      await api.deleteConductedLecture(sessionId);
+      setConductedLectures(prev => prev.filter(l => l.id !== sessionId));
+      loadData();
+    } catch (err) {
+      alert(err.message || 'Failed to delete lecture record');
+    }
+  };
+
   const handleAddStudent = async (e) => {
     e.preventDefault();
     try {
@@ -386,6 +397,14 @@ export function AdminPortal({ hodProfile, onLaunchLectureAsHod }) {
                         >
                           <span>{isExpanded ? 'Hide' : 'Preview'}</span>
                           {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                        </button>
+
+                        <button
+                          onClick={() => handleDeleteConductedLecture(lect.id, `${lect.subjectName} (${lect.division})`)}
+                          className="p-2 bg-white hover:bg-rose-50 text-rose-600 border border-slate-300 hover:border-rose-300 transition touch-target"
+                          title="Delete / Remove Lecture Record"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       </div>
                     </div>

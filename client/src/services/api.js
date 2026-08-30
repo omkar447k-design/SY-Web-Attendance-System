@@ -114,6 +114,11 @@ export const api = {
     return { success: true, data: sessions };
   },
 
+  deleteConductedLecture: async (sessionId) => {
+    CloudSync.deleteSession(sessionId);
+    return { success: true, message: 'Lecture session removed from archive' };
+  },
+
   getAdminStats: async (department) => {
     const students = await CloudSync.getStudents(department);
     const sessions = await CloudSync.getSessions(department);
@@ -190,14 +195,15 @@ export const api = {
   checkTeacherStatus: (data) => request('/api/teacher/check-status', { method: 'POST', body: JSON.stringify(data) }),
   getTeacherActiveSession: (teacherId) => request(`/api/teacher/session/active${teacherId ? `?teacherId=${teacherId}` : ''}`),
   startSession: async (data) => {
+    const selectedDivs = data.divisions && data.divisions.length > 0 ? data.divisions : [data.division || 'SY-A'];
     const newSession = {
       id: `SESS_${Date.now()}`,
       subjectName: data.subjectName,
       teacherId: data.teacherId,
       teacherName: data.teacherName,
-      department: data.department,
-      division: data.divisions ? data.divisions.join(', ') : (data.division || 'SY-A'),
-      divisions: data.divisions || [data.division || 'SY-A'],
+      department: data.department || 'entc',
+      division: selectedDivs.join(', '),
+      divisions: selectedDivs,
       batch: data.batch || 'All',
       startTime: new Date().toISOString(),
       endTime: new Date(Date.now() + (Number(data.durationMinutes) || 3) * 60 * 1000).toISOString(),
@@ -205,16 +211,13 @@ export const api = {
       status: 'active',
       date: new Date().toISOString().split('T')[0],
       totalPresent: 0,
-      totalStudents: 80 * (data.divisions?.length || 1),
+      totalStudents: 80 * selectedDivs.length,
       attendees: []
     };
-
-    CloudSync.saveSession(newSession);
 
     try {
       const res = await request('/api/teacher/session/start', { method: 'POST', body: JSON.stringify(data) });
       if (res.success && res.session) {
-        CloudSync.saveSession(res.session);
         return res;
       }
     } catch (e) {}
@@ -231,7 +234,11 @@ export const api = {
   extendSession: (sessionId, extraMinutes = 1) => request('/api/teacher/session/extend', { method: 'POST', body: JSON.stringify({ sessionId, extraMinutes }) }),
   endSession: async (sessionId, sessionData) => {
     if (sessionData) {
-      CloudSync.saveSession({ ...sessionData, status: 'closed', endTime: new Date().toISOString() });
+      CloudSync.saveSession({
+        ...sessionData,
+        status: 'closed',
+        endTime: new Date().toISOString()
+      });
     }
     try {
       await request('/api/teacher/session/end', { method: 'POST', body: JSON.stringify({ sessionId }) });
@@ -258,7 +265,6 @@ export const api = {
       boundAt: new Date().toISOString()
     };
 
-    // 1. Immediately broadcast new verified student to Cloud DB so HOD laptop receives it
     await CloudSync.saveStudent(studentData);
     await CloudSync.saveLog({
       type: 'NEW_STUDENT_REGISTRATION',
@@ -273,7 +279,6 @@ export const api = {
       status: 'VERIFIED_PHYSICAL_ID'
     });
 
-    // 2. Try serverless endpoint asynchronously
     try {
       await request('/api/student/login', { method: 'POST', body: JSON.stringify(data) });
     } catch (err) {}
