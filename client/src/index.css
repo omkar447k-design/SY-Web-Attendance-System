@@ -7,13 +7,23 @@
     -webkit-tap-highlight-color: transparent;
     touch-action: manipulation;
     overflow-x: hidden;
+    font-family: 'Inter', 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    letter-spacing: -0.01em;
   }
   
   body {
-    @apply bg-slate-50 text-slate-800 antialiased;
+    @apply bg-[#f8fafc] text-black antialiased;
     overflow-x: hidden;
     min-height: 100vh;
     padding-bottom: env(safe-area-inset-bottom, 0px);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    letter-spacing: -0.025em;
+    font-weight: 800;
   }
 
   /* Prevent automatic zoom on input focus on iOS Safari */
@@ -29,20 +39,40 @@
   }
 }
 
-/* Custom crisp scrollbars */
+/* Netflix-style typography & UI utility classes */
+.netflix-title {
+  font-weight: 900;
+  letter-spacing: -0.03em;
+  color: #000000;
+}
+
+.netflix-badge {
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.netflix-subtitle {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: #475569;
+}
+
+/* Crisp rectangular scrollbars */
 ::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
+  width: 4px;
+  height: 4px;
 }
 ::-webkit-scrollbar-track {
-  background: #f1f5f9;
+  background: #ffffff;
 }
 ::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 9999px;
+  background: #000000;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  background: #38bdf8;
 }
 
 /* Touch friendly helpers */
@@ -51,15 +81,8 @@
   min-width: 44px;
 }
 
-/* Subtle, clean soft shadows */
-.card-shadow {
-  box-shadow: 0 4px 20px -2px rgba(14, 165, 233, 0.06), 0 2px 6px -1px rgba(15, 23, 42, 0.03);
-}
-
-.card-hover {
-  transition: all 0.2s ease-in-out;
-}
-.card-hover:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 10px 25px -3px rgba(14, 165, 233, 0.1), 0 4px 6px -2px rgba(15, 23, 42, 0.04);
+/* Crisp rectangular card borders */
+.card-border {
+  border: 1px solid #e2e8f0;
+  background-color: #ffffff;
 }
