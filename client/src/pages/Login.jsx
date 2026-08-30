@@ -232,25 +232,18 @@ export function Login({ onLoginSuccess }) {
     }
   }, [teacherName, teacherDept, modalMode]);
 
-const DEPARTMENT_HOD_NAMES = {
-  entc: 'Dr. Mousami Vanjale',
-  comp: 'Dr. S. R. Patil',
-  it: 'Dr. P. S. Jadhav',
-  aids: 'Dr. A. B. Deshmukh',
-  elec: 'Dr. R. K. Kulkarni',
-  instru: 'Dr. N. M. Shinde'
-};
-
   const updateSelectedHodDepartment = (deptId, deptList = hodDeptList) => {
     setSelectedHodDept(deptId);
     setAdminError('');
 
     const curr = deptList.find(d => d.id === deptId);
-    const localName = localStorage.getItem(`sy_hod_name_${deptId}`);
-    const recognizedName = localName || curr?.hodName || DEPARTMENT_HOD_NAMES[deptId] || 'Department Head';
-
-    setHodIsFirstTime(false);
-    setHodName(recognizedName);
+    if (curr && curr.isFirstTime === false && curr.hodName) {
+      setHodIsFirstTime(false);
+      setHodName(curr.hodName);
+    } else {
+      setHodIsFirstTime(true);
+      setHodName('');
+    }
   };
 
   const toggleDivisionSelection = (div) => {
@@ -479,9 +472,17 @@ const DEPARTMENT_HOD_NAMES = {
     e.preventDefault();
     setAdminError('');
 
-    const resolvedHodName = hodName.trim() || localStorage.getItem(`sy_hod_name_${selectedHodDept}`) || DEPARTMENT_HOD_NAMES[selectedHodDept] || 'Department Head';
-
-    if (!hodPassword) {
+    if (hodIsFirstTime) {
+      if (!hodName.trim() || hodName.trim().length < 3) {
+        return setAdminError('Please enter your Full Name as HOD');
+      }
+      if (!hodNewPassword || hodNewPassword.length < 4) {
+        return setAdminError('Please create a password with at least 4 characters');
+      }
+      if (hodNewPassword !== hodConfirmPassword) {
+        return setAdminError('Passwords do not match');
+      }
+    } else if (!hodPassword) {
       return setAdminError('Please enter your HOD Password');
     }
 
@@ -489,16 +490,14 @@ const DEPARTMENT_HOD_NAMES = {
     try {
       const res = await api.hodLogin({
         department: selectedHodDept,
-        hodName: resolvedHodName,
+        hodName: hodName.trim(),
         password: hodPassword,
-        isFirstTimeSetup: false
+        newPassword: hodNewPassword,
+        isFirstTimeSetup: hodIsFirstTime
       });
 
       if (res.success) {
-        const finalName = res.hodName || resolvedHodName || 'Department Head';
-        localStorage.setItem(`sy_hod_configured_${selectedHodDept}`, 'true');
-        localStorage.setItem(`sy_hod_name_${selectedHodDept}`, finalName);
-
+        const finalName = res.hodName || hodName.trim() || 'Department Head';
         setShowAdminModal(false);
         onLoginSuccess('admin', {
           name: finalName,
@@ -1095,30 +1094,74 @@ const DEPARTMENT_HOD_NAMES = {
                     </select>
                   </div>
 
-                  <div>
-                    <div className="mb-2.5 p-3 bg-slate-50 text-xs font-bold text-slate-800 flex items-center justify-between border border-slate-200">
-                      <div className="min-w-0 flex items-center space-x-1.5 truncate">
-                        <span className="text-slate-500 font-medium">HOD:</span>
-                        <span className="text-slate-900 font-bold truncate">{hodName || DEPARTMENT_HOD_NAMES[selectedHodDept] || 'Department Head'}</span>
+                  {hodIsFirstTime ? (
+                    <div className="space-y-3 p-3.5 bg-slate-50 border border-slate-200">
+                      <div className="text-xs font-bold text-slate-900 flex items-center space-x-1.5">
+                        <Sparkles className="w-3.5 h-3.5 text-sky-600 flex-shrink-0" />
+                        <span>First-Time HOD Registration & Setup</span>
                       </div>
-                      <span className="text-[10px] text-emerald-700 font-bold px-1.5 py-0.5 bg-emerald-50 border border-emerald-200 flex-shrink-0 ml-1">
-                        ● Official Account
-                      </span>
-                    </div>
+                      
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">HOD Full Name</label>
+                        <input
+                          type="text"
+                          value={hodName}
+                          onChange={(e) => setHodName(e.target.value)}
+                          placeholder="Enter your Full Name as HOD"
+                          className="w-full bg-white border border-slate-300 px-3 py-2 text-base sm:text-xs text-slate-900 font-bold outline-none focus:border-slate-800 min-h-[44px]"
+                          required
+                        />
+                      </div>
 
-                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                      HOD Private Password
-                    </label>
-                    <input
-                      type="password"
-                      value={hodPassword}
-                      onChange={(e) => setHodPassword(e.target.value)}
-                      placeholder="Enter HOD password (default: admin)"
-                      autoFocus
-                      className="w-full bg-white border border-slate-300 px-3.5 py-2.5 text-base sm:text-sm text-slate-900 font-bold focus:border-slate-800 outline-none min-h-[44px]"
-                      required
-                    />
-                  </div>
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Create Private Password</label>
+                        <input
+                          type="password"
+                          value={hodNewPassword}
+                          onChange={(e) => setHodNewPassword(e.target.value)}
+                          placeholder="Min. 4 characters"
+                          className="w-full bg-white border border-slate-300 px-3 py-2 text-base sm:text-xs text-slate-900 outline-none focus:border-slate-800 min-h-[44px]"
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Confirm Password</label>
+                        <input
+                          type="password"
+                          value={hodConfirmPassword}
+                          onChange={(e) => setHodConfirmPassword(e.target.value)}
+                          placeholder="Repeat password"
+                          className="w-full bg-white border border-slate-300 px-3 py-2 text-base sm:text-xs text-slate-900 outline-none focus:border-slate-800 min-h-[44px]"
+                          required
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <div>
+                      <div className="mb-2.5 p-3 bg-slate-50 text-xs font-bold text-slate-800 flex items-center justify-between border border-slate-200">
+                        <div className="min-w-0 flex items-center space-x-1.5 truncate">
+                          <span className="text-slate-500 font-medium">Registered HOD:</span>
+                          <span className="text-slate-900 font-bold truncate">{hodName || 'Department Head'}</span>
+                        </div>
+                        <span className="text-[10px] text-emerald-700 font-bold px-1.5 py-0.5 bg-emerald-50 border border-emerald-200 flex-shrink-0 ml-1">
+                          ● Configured
+                        </span>
+                      </div>
+
+                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                        HOD Password
+                      </label>
+                      <input
+                        type="password"
+                        value={hodPassword}
+                        onChange={(e) => setHodPassword(e.target.value)}
+                        placeholder="Enter your HOD password"
+                        autoFocus
+                        className="w-full bg-white border border-slate-300 px-3.5 py-2.5 text-base sm:text-sm text-slate-900 font-bold focus:border-slate-800 outline-none min-h-[44px]"
+                        required
+                      />
+                    </div>
+                  )}
 
                   <div className="flex space-x-2 pt-2">
                     <button

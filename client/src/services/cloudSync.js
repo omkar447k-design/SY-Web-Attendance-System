@@ -1,298 +1,225 @@
-// GLOBAL CROSS-DEVICE CLOUD SYNCHRONIZATION ENGINE
-// Synchronizes Student Rosters, Live Logins, and Conducted Lectures across all mobile phones and laptops.
+// REAL-TIME PERMANENT CROSS-DEVICE CLOUD DATABASE ENGINE
+// Synchronizes HOD Accounts, Student Rosters, Live Logins, and Conducted Lectures across Mobile and Desktop.
 
-const SYNC_BASE_URL = 'https://crudcrud.com/api/da2d894039044336a0c7bbe03b46702f';
+const CLOUD_STORE_URL = 'https://api.restful-api.dev/objects/ff808181a04ccf2d01a0526641ec1632';
 
-const STORAGE_KEYS = {
-  STUDENTS: 'sy_perm_students',
-  LOGS: 'sy_perm_logs',
-  TEACHERS: 'sy_perm_teachers',
-  SESSIONS: 'sy_perm_sessions'
-};
-
-function getLocal(key) {
+async function fetchCloudState() {
   try {
-    const raw = localStorage.getItem(key);
-    return raw ? JSON.parse(raw) : [];
+    const res = await fetch(CLOUD_STORE_URL, { cache: 'no-store' });
+    if (res.ok) {
+      const json = await res.json();
+      if (json && json.data) {
+        return {
+          students: Array.isArray(json.data.students) ? json.data.students : [],
+          sessions: Array.isArray(json.data.sessions) ? json.data.sessions : [],
+          logs: Array.isArray(json.data.logs) ? json.data.logs : [],
+          hodAccounts: json.data.hodAccounts && typeof json.data.hodAccounts === 'object' ? json.data.hodAccounts : {},
+          teachers: Array.isArray(json.data.teachers) ? json.data.teachers : []
+        };
+      }
+    }
+  } catch (err) {
+    console.warn('Cloud state fetch warning:', err.message);
+  }
+
+  // Fallback to local cache if network drop
+  try {
+    const raw = localStorage.getItem('sy_cloud_cache_v2');
+    return raw ? JSON.parse(raw) : { students: [], sessions: [], logs: [], hodAccounts: {}, teachers: [] };
   } catch (e) {
-    return [];
+    return { students: [], sessions: [], logs: [], hodAccounts: {}, teachers: [] };
   }
 }
 
-function setLocal(key, data) {
+async function writeCloudState(state) {
   try {
-    localStorage.setItem(key, JSON.stringify(data));
-  } catch (e) {
-    console.warn(`Local storage quota warning on [${key}]:`, e);
+    localStorage.setItem('sy_cloud_cache_v2', JSON.stringify(state));
+  } catch (e) {}
+
+  try {
+    await fetch(CLOUD_STORE_URL, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'SY_ATTENDANCE_STATE',
+        data: state
+      })
+    });
+  } catch (err) {
+    console.warn('Cloud state write warning:', err.message);
   }
 }
 
 export const CloudSync = {
-  // 1. Fetch Students from Cloud and merge with Local
+  // 1. HOD Accounts (Permanent Cross-Device Creation & Verification)
+  getHodAccounts: async () => {
+    const state = await fetchCloudState();
+    return state.hodAccounts || {};
+  },
+
+  saveHodAccount: async (department, accountData) => {
+    const state = await fetchCloudState();
+    state.hodAccounts = state.hodAccounts || {};
+    state.hodAccounts[department] = {
+      name: (accountData.name || '').trim(),
+      password: accountData.password,
+      configuredAt: new Date().toISOString()
+    };
+    await writeCloudState(state);
+    return state.hodAccounts[department];
+  },
+
+  // 2. Students Roster
   getStudents: async (department = null, division = null) => {
-    let cloudStudents = [];
-    try {
-      const res = await fetch(`${SYNC_BASE_URL}/students`, { cache: 'no-store' });
-      if (res.ok) {
-        cloudStudents = await res.json();
-      }
-    } catch (err) {
-      console.warn('Cloud students fetch:', err.message);
-    }
+    const state = await fetchCloudState();
+    let list = state.students || [];
 
-    const localStudents = getLocal(STORAGE_KEYS.STUDENTS);
-    const map = new Map();
-
-    localStudents.forEach(s => {
-      const key = `${s.department || 'entc'}_${s.division || 'SY-A'}_${s.rollNo}`;
-      map.set(key, s);
-    });
-
-    cloudStudents.forEach(s => {
-      const key = `${s.department || 'entc'}_${s.division || 'SY-A'}_${s.rollNo}`;
-      map.set(key, { ...(map.get(key) || {}), ...s });
-    });
-
-    const merged = Array.from(map.values());
-    setLocal(STORAGE_KEYS.STUDENTS, merged);
-
-    let filtered = merged;
     if (department && department !== 'all') {
-      filtered = filtered.filter(s => s.department === department);
+      list = list.filter(s => s.department === department);
     }
     if (division) {
-      filtered = filtered.filter(s => s.division === division);
+      list = list.filter(s => s.division === division);
     }
 
-    filtered.sort((a, b) => Number(a.rollNo || 0) - Number(b.rollNo || 0));
-    return filtered;
+    list.sort((a, b) => Number(a.rollNo || 0) - Number(b.rollNo || 0));
+    return list;
   },
 
-  // 2. Fetch Live Logs from Cloud and merge with Local
-  getLogs: async (department = null) => {
-    let cloudLogs = [];
-    try {
-      const res = await fetch(`${SYNC_BASE_URL}/logs`, { cache: 'no-store' });
-      if (res.ok) {
-        cloudLogs = await res.json();
-      }
-    } catch (err) {
-      console.warn('Cloud logs fetch:', err.message);
-    }
-
-    const localLogs = getLocal(STORAGE_KEYS.LOGS);
-    const map = new Map();
-
-    localLogs.forEach(l => {
-      const key = `${l.department || 'entc'}_${l.division || 'SY-A'}_${l.rollNo || l.studentId}`;
-      map.set(key, l);
-    });
-
-    cloudLogs.forEach(l => {
-      const key = `${l.department || 'entc'}_${l.division || 'SY-A'}_${l.rollNo || l.studentId}`;
-      map.set(key, { ...(map.get(key) || {}), ...l });
-    });
-
-    const merged = Array.from(map.values());
-    merged.sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0));
-    setLocal(STORAGE_KEYS.LOGS, merged);
-
-    let filtered = merged;
-    if (department && department !== 'all') {
-      filtered = filtered.filter(l => l.department === department);
-    }
-
-    return filtered;
-  },
-
-  // 3. Fetch Conducted Lectures from Cloud with Automatic Deduplication
-  getSessions: async (department = null) => {
-    let cloudSessions = [];
-    try {
-      const res = await fetch(`${SYNC_BASE_URL}/sessions`, { cache: 'no-store' });
-      if (res.ok) {
-        cloudSessions = await res.json();
-      }
-    } catch (err) {
-      console.warn('Cloud sessions fetch:', err.message);
-    }
-
-    const localSessions = getLocal(STORAGE_KEYS.SESSIONS);
-    const map = new Map();
-
-    // Deduplicate by normalized session key (Subject + Dept + Div + Time)
-    const all = [...localSessions, ...cloudSessions];
-    all.forEach(s => {
-      if (!s) return;
-      const timeKey = `${s.department || 'entc'}_${s.division || 'SY-A'}_${s.subjectName || 'Lecture'}_${s.startTime ? s.startTime.substring(0, 16) : s.date}`;
-      const existing = map.get(timeKey);
-
-      if (!existing) {
-        map.set(timeKey, s);
-      } else {
-        // Merge and prioritize the session with more attendees
-        const existingAttendees = existing.attendees || [];
-        const newAttendees = s.attendees || [];
-        const mergedAttendees = newAttendees.length >= existingAttendees.length ? newAttendees : existingAttendees;
-        const maxPresent = Math.max(existing.totalPresent || 0, s.totalPresent || 0, mergedAttendees.length);
-
-        map.set(timeKey, {
-          ...existing,
-          ...s,
-          totalPresent: maxPresent,
-          attendees: mergedAttendees,
-          status: 'closed'
-        });
-      }
-    });
-
-    let merged = Array.from(map.values());
-    merged.sort((a, b) => new Date(b.startTime || b.date || 0) - new Date(a.startTime || a.date || 0));
-    setLocal(STORAGE_KEYS.SESSIONS, merged);
-
-    if (department && department !== 'all') {
-      merged = merged.filter(s => s.department === department);
-    }
-
-    return merged;
-  },
-
-  // 4. Save/Register Student and Broadcast to Cloud
   saveStudent: async (student) => {
-    if (!student || !student.id) return;
-    const local = getLocal(STORAGE_KEYS.STUDENTS);
-    const idx = local.findIndex(s => s.id === student.id || (s.rollNo === student.rollNo && s.department === student.department && s.division === student.division));
-    if (idx >= 0) {
-      local[idx] = { ...local[idx], ...student };
-    } else {
-      local.unshift(student);
-    }
-    setLocal(STORAGE_KEYS.STUDENTS, local);
+    const state = await fetchCloudState();
+    state.students = state.students || [];
 
-    try {
-      const studentToCloud = {
-        id: student.id,
-        rollNo: student.rollNo,
-        name: student.name,
-        prn: student.prn,
-        department: student.department || 'entc',
-        division: student.division || 'SY-A',
-        batch: student.batch || 'B1',
-        attendancePercentage: student.attendancePercentage || 100.0,
-        isDefaulter: false,
-        boundDeviceId: student.boundDeviceId || 'BOUND',
-        boundAt: student.boundAt || new Date().toISOString()
-      };
-
-      await fetch(`${SYNC_BASE_URL}/students`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(studentToCloud)
-      });
-    } catch (err) {
-      console.warn('Cloud save student:', err.message);
-    }
-  },
-
-  // 5. Save Live Audit Log and Broadcast to Cloud
-  saveLog: async (log) => {
-    if (!log) return;
-    const local = getLocal(STORAGE_KEYS.LOGS);
-    const idx = local.findIndex(l => 
-      (l.studentId && log.studentId && l.studentId === log.studentId) || 
-      (l.rollNo === log.rollNo && l.department === log.department && l.division === log.division)
+    const idx = state.students.findIndex(s =>
+      s.id === student.id ||
+      (s.rollNo === Number(student.rollNo) && s.department === student.department && s.division === student.division)
     );
 
     if (idx >= 0) {
-      local[idx] = { ...local[idx], ...log, timestamp: log.timestamp || local[idx].timestamp };
+      state.students[idx] = { ...state.students[idx], ...student };
     } else {
-      local.unshift({
-        id: log.id || `LOG_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
-        timestamp: log.timestamp || new Date().toISOString(),
-        ...log
-      });
+      state.students.push(student);
     }
-    setLocal(STORAGE_KEYS.LOGS, local.slice(0, 200));
 
-    try {
-      const logToCloud = {
-        id: log.id || `LOG_${Date.now()}`,
-        studentId: log.studentId,
-        studentName: log.studentName,
-        rollNo: log.rollNo,
-        prn: log.prn,
-        department: log.department || 'entc',
-        division: log.division || 'SY-A',
-        status: log.status || 'VERIFIED_PHYSICAL_ID',
-        timestamp: log.timestamp || new Date().toISOString()
-      };
-
-      await fetch(`${SYNC_BASE_URL}/logs`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(logToCloud)
-      });
-    } catch (err) {
-      console.warn('Cloud save log:', err.message);
-    }
+    await writeCloudState(state);
+    return student;
   },
 
-  // 6. Save Finalized Conducted Lecture Session (Deduplicated)
-  saveSession: async (session) => {
-    if (!session || !session.id) return;
-    const local = getLocal(STORAGE_KEYS.SESSIONS);
-    const timeKey = `${session.department || 'entc'}_${session.division || 'SY-A'}_${session.subjectName || 'Lecture'}_${session.startTime ? session.startTime.substring(0, 16) : session.date}`;
-    
-    const idx = local.findIndex(s => {
-      const existingKey = `${s.department || 'entc'}_${s.division || 'SY-A'}_${s.subjectName || 'Lecture'}_${s.startTime ? s.startTime.substring(0, 16) : s.date}`;
-      return s.id === session.id || existingKey === timeKey;
+  deleteStudent: async (studentId) => {
+    const state = await fetchCloudState();
+    state.students = (state.students || []).filter(s => s.id !== studentId && s.rollNo !== Number(studentId));
+    state.logs = (state.logs || []).filter(l => l.studentId !== studentId && l.rollNo !== Number(studentId));
+    await writeCloudState(state);
+  },
+
+  resetDevice: async (studentId) => {
+    const state = await fetchCloudState();
+    state.students = (state.students || []).map(s => {
+      if (s.id === studentId || s.rollNo === Number(studentId)) {
+        return { ...s, boundDeviceId: null, boundAt: null };
+      }
+      return s;
+    });
+    await writeCloudState(state);
+  },
+
+  // 3. Conducted Lecture Sessions
+  getSessions: async (department = null) => {
+    const state = await fetchCloudState();
+    let list = state.sessions || [];
+
+    if (department && department !== 'all') {
+      list = list.filter(s => s.department === department);
+    }
+
+    // Deduplicate sessions by department, division, subjectName, and timestamp
+    const dedupMap = new Map();
+    list.forEach(sess => {
+      const timeKey = sess.startTime ? sess.startTime.slice(0, 16) : (sess.date || sess.id);
+      const key = `${sess.department || 'entc'}_${sess.division || 'SY-A'}_${sess.subjectName || 'Lecture'}_${timeKey}`;
+      
+      const existing = dedupMap.get(key);
+      if (!existing) {
+        dedupMap.set(key, sess);
+      } else {
+        const existingCount = existing.totalPresent !== undefined ? existing.totalPresent : (existing.attendees?.length || 0);
+        const newCount = sess.totalPresent !== undefined ? sess.totalPresent : (sess.attendees?.length || 0);
+        if (newCount >= existingCount) {
+          dedupMap.set(key, sess);
+        }
+      }
     });
 
+    const uniqueList = Array.from(dedupMap.values());
+    uniqueList.sort((a, b) => new Date(b.startTime || b.date || 0) - new Date(a.startTime || a.date || 0));
+    return uniqueList;
+  },
+
+  saveSession: async (session) => {
+    const state = await fetchCloudState();
+    state.sessions = state.sessions || [];
+
+    const idx = state.sessions.findIndex(s => s.id === session.id);
     if (idx >= 0) {
-      local[idx] = { ...local[idx], ...session };
+      state.sessions[idx] = { ...state.sessions[idx], ...session };
     } else {
-      local.unshift(session);
+      state.sessions.unshift(session);
     }
-    setLocal(STORAGE_KEYS.SESSIONS, local);
 
-    try {
-      await fetch(`${SYNC_BASE_URL}/sessions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(session)
-      });
-    } catch (err) {
-      console.warn('Cloud save session:', err.message);
-    }
+    await writeCloudState(state);
+    return session;
   },
 
-  // 7. Delete Session
-  deleteSession: (sessionId) => {
-    let local = getLocal(STORAGE_KEYS.SESSIONS);
-    local = local.filter(s => s.id !== sessionId);
-    setLocal(STORAGE_KEYS.SESSIONS, local);
+  deleteSession: async (sessionId) => {
+    const state = await fetchCloudState();
+    state.sessions = (state.sessions || []).filter(s => s.id !== sessionId);
+    await writeCloudState(state);
   },
 
-  // 8. Delete Student Locally & Reset in Cloud
-  deleteStudent: (studentId) => {
-    let list = getLocal(STORAGE_KEYS.STUDENTS);
-    list = list.filter(s => s.id !== studentId && s.rollNo !== Number(studentId));
-    setLocal(STORAGE_KEYS.STUDENTS, list);
+  // 4. Live Login Logs
+  getLogs: async (department = null) => {
+    const state = await fetchCloudState();
+    let list = state.logs || [];
 
-    let logs = getLocal(STORAGE_KEYS.LOGS);
-    logs = logs.filter(l => l.studentId !== studentId && l.rollNo !== Number(studentId));
-    setLocal(STORAGE_KEYS.LOGS, logs);
-  },
-
-  // 9. Reset Device Binding
-  resetDevice: (studentId) => {
-    const list = getLocal(STORAGE_KEYS.STUDENTS);
-    const target = list.find(s => s.id === studentId || s.rollNo === Number(studentId));
-    if (target) {
-      target.boundDeviceId = null;
-      target.boundFingerprint = null;
-      target.boundAt = null;
-      setLocal(STORAGE_KEYS.STUDENTS, list);
+    if (department && department !== 'all') {
+      list = list.filter(l => l.department === department);
     }
+
+    list.sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0));
+    return list;
+  },
+
+  saveLog: async (log) => {
+    const state = await fetchCloudState();
+    state.logs = state.logs || [];
+    state.logs.unshift({
+      ...log,
+      id: log.id || `LOG_${Date.now()}`,
+      timestamp: log.timestamp || new Date().toISOString()
+    });
+    await writeCloudState(state);
+    return log;
+  },
+
+  // 5. Teachers
+  getTeachers: async (department = null) => {
+    const state = await fetchCloudState();
+    let list = state.teachers || [];
+    if (department && department !== 'all') {
+      list = list.filter(t => t.department === department);
+    }
+    return list;
+  },
+
+  saveTeacher: async (teacher) => {
+    const state = await fetchCloudState();
+    state.teachers = state.teachers || [];
+    const idx = state.teachers.findIndex(t => t.id === teacher.id || (t.name === teacher.name && t.department === teacher.department));
+    if (idx >= 0) {
+      state.teachers[idx] = { ...state.teachers[idx], ...teacher };
+    } else {
+      state.teachers.push(teacher);
+    }
+    await writeCloudState(state);
+    return teacher;
   }
 };

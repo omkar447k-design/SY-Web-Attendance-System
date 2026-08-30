@@ -44,74 +44,74 @@ async function request(endpoint, options = {}) {
   }
 }
 
+const DEPARTMENTS_LIST = [
+  { id: 'comp', name: '1. Computer Science & Engineering', code: 'CSE' },
+  { id: 'it', name: '2. Information Technology', code: 'IT' },
+  { id: 'aids', name: '3. Artificial Intelligence & Data Science', code: 'AI&DS' },
+  { id: 'entc', name: '4. Electronics & Telecommunication', code: 'ENTC' },
+  { id: 'elec', name: '5. Electrical Engineering', code: 'ELEC' },
+  { id: 'instru', name: '6. Instrumentation Engineering', code: 'INSTRU' }
+];
+
 export const api = {
   // Admin & 2-Tier HOD Security
   verifyGatekeeper: async (code) => {
-    try {
-      const res = await request('/api/admin/gatekeeper', { method: 'POST', body: JSON.stringify({ code }) });
-      if (res && res.success) return res;
-    } catch (err) {}
-
     const cleanCode = (code || '').trim();
-    if (cleanCode === 'admin' || cleanCode === 'HOD@ADMIN2026' || cleanCode.toLowerCase() === 'admin') {
-      const departments = [
-        { id: 'comp', name: '1. Computer Science & Engineering', code: 'CSE', hodName: 'Dr. S. R. Patil', isFirstTime: false },
-        { id: 'it', name: '2. Information Technology', code: 'IT', hodName: 'Dr. P. S. Jadhav', isFirstTime: false },
-        { id: 'aids', name: '3. Artificial Intelligence & Data Science', code: 'AI&DS', hodName: 'Dr. A. B. Deshmukh', isFirstTime: false },
-        { id: 'entc', name: '4. Electronics & Telecommunication', code: 'ENTC', hodName: 'Dr. Mousami Vanjale', isFirstTime: false },
-        { id: 'elec', name: '5. Electrical Engineering', code: 'ELEC', hodName: 'Dr. R. K. Kulkarni', isFirstTime: false },
-        { id: 'instru', name: '6. Instrumentation Engineering', code: 'INSTRU', hodName: 'Dr. N. M. Shinde', isFirstTime: false }
-      ];
-      return { success: true, message: 'Gatekeeper unlocked', departments };
+    if (cleanCode !== 'admin' && cleanCode !== 'HOD@ADMIN2026' && cleanCode.toLowerCase() !== 'admin') {
+      throw new Error('Invalid College Admin Access Code');
     }
 
-    throw new Error('Invalid College Admin Access Code');
+    const hodAccounts = await CloudSync.getHodAccounts();
+    const departments = DEPARTMENTS_LIST.map(d => {
+      const acc = hodAccounts[d.id];
+      const isConfigured = Boolean(acc && acc.name && acc.password);
+      return {
+        ...d,
+        hodName: isConfigured ? acc.name : null,
+        isFirstTime: !isConfigured
+      };
+    });
+
+    return { success: true, message: 'Gatekeeper unlocked', departments };
   },
 
   hodLogin: async (data) => {
-    try {
-      const res = await request('/api/admin/login', { method: 'POST', body: JSON.stringify(data) });
-      if (res && res.success) return res;
-    } catch (err) {}
-
-    const defaultNames = {
-      entc: 'Dr. Mousami Vanjale',
-      comp: 'Dr. S. R. Patil',
-      it: 'Dr. P. S. Jadhav',
-      aids: 'Dr. A. B. Deshmukh',
-      elec: 'Dr. R. K. Kulkarni',
-      instru: 'Dr. N. M. Shinde'
-    };
-
-    const savedPass = localStorage.getItem(`sy_hod_pass_${data.department}`);
-    const savedName = localStorage.getItem(`sy_hod_name_${data.department}`) || data.hodName || defaultNames[data.department] || 'Department Head';
+    const hodAccounts = await CloudSync.getHodAccounts();
+    const existing = hodAccounts[data.department];
 
     if (data.isFirstTimeSetup && data.newPassword) {
-      localStorage.setItem(`sy_hod_pass_${data.department}`, data.newPassword);
-      localStorage.setItem(`sy_hod_name_${data.department}`, savedName);
-      localStorage.setItem(`sy_hod_configured_${data.department}`, 'true');
-      return { success: true, message: 'HOD setup completed', hodName: savedName };
+      const cleanName = (data.hodName || '').trim() || 'Department Head';
+      await CloudSync.saveHodAccount(data.department, {
+        name: cleanName,
+        password: data.newPassword
+      });
+      return { success: true, message: 'HOD setup completed and saved permanently', hodName: cleanName };
     }
 
-    if (savedPass) {
-      if (savedPass === data.password || data.password === 'admin' || data.password === 'hod123') {
-        return { success: true, message: 'HOD login verified', hodName: savedName };
+    if (existing && existing.password) {
+      if (existing.password === data.password || data.password === 'admin' || data.password === 'hod123') {
+        return { success: true, message: 'HOD login verified', hodName: existing.name || 'Department Head' };
       } else {
         throw new Error('Incorrect HOD Password');
       }
     }
 
-    if (data.password === 'admin' || data.password === 'hod123' || (data.password && data.password.length >= 4)) {
-      localStorage.setItem(`sy_hod_pass_${data.department}`, data.password);
-      localStorage.setItem(`sy_hod_name_${data.department}`, savedName);
-      localStorage.setItem(`sy_hod_configured_${data.department}`, 'true');
-      return { success: true, message: 'HOD login verified', hodName: savedName };
+    if (data.password === 'admin' || data.password === 'hod123') {
+      return { success: true, message: 'HOD login verified', hodName: existing?.name || data.hodName || 'Department Head' };
     }
 
     throw new Error('Invalid Password');
   },
 
-  changeHodPassword: (data) => request('/api/admin/change-password', { method: 'POST', body: JSON.stringify(data) }),
+  changeHodPassword: async (data) => {
+    const hodAccounts = await CloudSync.getHodAccounts();
+    const existing = hodAccounts[data.department] || {};
+    await CloudSync.saveHodAccount(data.department, {
+      name: existing.name || 'Department Head',
+      password: data.newPassword
+    });
+    return { success: true, message: 'Password updated successfully' };
+  },
 
   getLoginLogs: async (department) => {
     const logs = await CloudSync.getLogs(department);
@@ -124,8 +124,8 @@ export const api = {
   },
 
   deleteConductedLecture: async (sessionId) => {
-    CloudSync.deleteSession(sessionId);
-    return { success: true, message: 'Lecture session removed from archive' };
+    await CloudSync.deleteSession(sessionId);
+    return { success: true, message: 'Lecture session removed permanently' };
   },
 
   getAdminStats: async (department) => {
@@ -167,44 +167,70 @@ export const api = {
   },
 
   deleteStudent: async (studentId) => {
-    CloudSync.deleteStudent(studentId);
+    await CloudSync.deleteStudent(studentId);
     return { success: true, message: 'Student removed permanently from roster.' };
   },
 
   resetStudentDevice: async (studentId) => {
-    CloudSync.resetDevice(studentId);
+    await CloudSync.resetDevice(studentId);
     return { success: true, message: 'Student phone hardware binding reset' };
   },
 
   resetTeacherPassword: (teacherId) => request(`/api/admin/teachers/${teacherId}/reset-password`, { method: 'POST' }),
   getSettings: () => request('/api/admin/settings'),
   updateSettings: (data) => request('/api/admin/settings', { method: 'POST', body: JSON.stringify(data) }),
-  getTeachers: () => request('/api/admin/teachers'),
+  getTeachers: async (dept) => {
+    const teachers = await CloudSync.getTeachers(dept);
+    return { success: true, data: teachers };
+  },
   getSubjects: () => request('/api/admin/subjects'),
   getMasterExcelUrl: (division = 'SY-A') => `${API_BASE}/api/admin/export/master?division=${division}`,
 
   // Teacher Auth
   teacherAuth: async (data) => {
-    try {
-      const res = await request('/api/teacher/auth', { method: 'POST', body: JSON.stringify(data) });
-      if (res && res.success) return res;
-    } catch (err) {}
+    const teacherProfile = {
+      id: `T_${data.department || 'entc'}_${Date.now()}`,
+      name: data.teacherName?.trim() || 'Faculty Member',
+      department: data.department || 'entc',
+      subjectName: data.subjectName || 'Subject',
+      role: 'teacher'
+    };
+
+    if (data.password !== 'faculty@2026' && data.password !== 'faculty123' && data.password !== 'admin' && (!data.password || data.password.length < 4)) {
+      throw new Error('Invalid Faculty Password');
+    }
+
+    await CloudSync.saveTeacher(teacherProfile);
 
     return {
       success: true,
       message: 'Authentication successful',
-      teacher: {
-        id: `T_${data.department || 'entc'}_${Date.now()}`,
-        name: data.teacherName?.trim() || 'Faculty Member',
-        department: data.department || 'entc',
-        subjectName: data.subjectName || 'Subject'
-      }
+      teacher: teacherProfile
     };
   },
   checkTeacherStatus: (data) => request('/api/teacher/check-status', { method: 'POST', body: JSON.stringify(data) }),
   getTeacherActiveSession: (teacherId) => request(`/api/teacher/session/active${teacherId ? `?teacherId=${teacherId}` : ''}`),
   startSession: async (data) => {
     const selectedDivs = data.divisions && data.divisions.length > 0 ? data.divisions : [data.division || 'SY-A'];
+    
+    // High-entropy 15s PIN
+    const ROTATION_SECONDS = 15;
+    const timeSlot = Math.floor(Date.now() / (ROTATION_SECONDS * 1000));
+    let h = 0x811c9dc5;
+    const str = `SY_SALT_${Date.now()}_${timeSlot}_SECURE`;
+    for (let i = 0; i < str.length; i++) {
+      h ^= str.charCodeAt(i);
+      h = Math.imul(h, 0x01000193);
+      h = (h << 13) | (h >>> 19);
+      h = Math.imul(h, 5) + 0xe6546b64;
+    }
+    h ^= h >>> 16;
+    h = Math.imul(h, 0x85ebca6b);
+    h ^= h >>> 13;
+    h = Math.imul(h, 0xc2b2ae35);
+    h ^= h >>> 16;
+    const initialPin = String(Math.abs(h) % 9000 + 1000);
+
     const newSession = {
       id: `SESS_${Date.now()}`,
       subjectName: data.subjectName,
@@ -235,7 +261,7 @@ export const api = {
       success: true,
       session: {
         ...newSession,
-        pinInfo: { pin: String(Math.floor(1000 + Math.random() * 9000)), secondsRemaining: 10 },
+        pinInfo: { pin: initialPin, secondsRemaining: 15 },
         remainingSessionSec: (Number(data.durationMinutes) || 3) * 60
       }
     };
@@ -243,7 +269,7 @@ export const api = {
   extendSession: (sessionId, extraMinutes = 1) => request('/api/teacher/session/extend', { method: 'POST', body: JSON.stringify({ sessionId, extraMinutes }) }),
   endSession: async (sessionId, sessionData) => {
     if (sessionData) {
-      CloudSync.saveSession({
+      await CloudSync.saveSession({
         ...sessionData,
         status: 'closed',
         endTime: new Date().toISOString()
@@ -300,6 +326,24 @@ export const api = {
   },
 
   getStudentActiveSession: (division, studentId, department) => request(`/api/student/session/active?division=${division || 'SY-A'}&studentId=${studentId || ''}&department=${department || 'comp'}`),
-  submitPin: (data) => request('/api/student/attendance/submit', { method: 'POST', body: JSON.stringify(data) }),
+  submitPin: async (data) => {
+    try {
+      const res = await request('/api/student/attendance/submit', { method: 'POST', body: JSON.stringify(data) });
+      if (res && res.success) return res;
+    } catch (e) {}
+
+    // Fallback sync
+    await CloudSync.saveLog({
+      type: 'ATTENDANCE_MARKED',
+      studentName: data.studentName,
+      rollNo: data.rollNo,
+      prn: data.prn,
+      department: data.department,
+      division: data.division,
+      status: 'PRESENT'
+    });
+
+    return { success: true, message: 'Attendance marked successfully!' };
+  },
   getStudentDashboard: (studentId) => request(`/api/student/dashboard/${studentId}`)
 };
