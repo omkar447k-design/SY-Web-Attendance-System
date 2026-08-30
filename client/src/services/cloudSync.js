@@ -1,9 +1,12 @@
-// HIGH-PERFORMANCE REAL-TIME CLOUD DATABASE ENGINE
-// Synchronizes HOD Accounts, Student Rosters, Live Logins, and Conducted Lectures across all devices.
+// HIGH-PERFORMANCE GLOBAL REAL-TIME CLOUD SYNCHRONIZATION ENGINE (NTFY BROKER)
+// Connects Desktop, Mobile, and all client browsers with 100% live synchronization.
 
-const CLOUD_STORE_URL = 'https://api.restful-api.dev/objects/ff808181a04ccf2d01a0526641ec1632';
+const SYNC_TOPIC = 'sy_attendance_prod_sync_v2026';
+const SYNC_URL = `https://ntfy.sh/${SYNC_TOPIC}`;
 
-// Lightweight payload sanitizer (prevents multi-megabyte base64 from blocking HTTP network sync)
+let memoryCache = null;
+let lastFetchTime = 0;
+
 function sanitizeStudent(s) {
   if (!s) return null;
   return {
@@ -40,53 +43,95 @@ function sanitizeLog(l) {
   };
 }
 
+function sanitizeSession(sess) {
+  if (!sess) return null;
+  return {
+    id: sess.id || `SESS_${Date.now()}`,
+    subjectName: (sess.subjectName || 'Lecture').trim(),
+    teacherId: sess.teacherId || 'T_FACULTY',
+    teacherName: (sess.teacherName || 'Faculty Member').trim(),
+    department: sess.department || 'entc',
+    division: sess.division || 'SY-A',
+    divisions: sess.divisions || (sess.division ? sess.division.split(',').map(d => d.trim()) : ['SY-A']),
+    batch: sess.batch || 'All',
+    startTime: sess.startTime || new Date().toISOString(),
+    endTime: sess.endTime || new Date().toISOString(),
+    durationMinutes: Number(sess.durationMinutes) || 3,
+    status: sess.status || 'closed',
+    date: sess.date || (sess.startTime ? sess.startTime.split('T')[0] : new Date().toISOString().split('T')[0]),
+    totalPresent: sess.totalPresent !== undefined ? sess.totalPresent : (sess.attendees?.length || 0),
+    totalStudents: sess.totalStudents || 80,
+    attendees: Array.isArray(sess.attendees) ? sess.attendees : []
+  };
+}
+
 async function fetchCloudState() {
+  const now = Date.now();
+  if (memoryCache && now - lastFetchTime < 1500) {
+    return memoryCache;
+  }
+
   try {
-    const res = await fetch(CLOUD_STORE_URL, { cache: 'no-store' });
+    const res = await fetch(`${SYNC_URL}/json?poll=1`, { cache: 'no-store' });
     if (res.ok) {
-      const json = await res.json();
-      if (json && json.data) {
-        const state = {
-          students: Array.isArray(json.data.students) ? json.data.students : [],
-          sessions: Array.isArray(json.data.sessions) ? json.data.sessions : [],
-          logs: Array.isArray(json.data.logs) ? json.data.logs : [],
-          hodAccounts: json.data.hodAccounts && typeof json.data.hodAccounts === 'object' ? json.data.hodAccounts : {},
-          teachers: Array.isArray(json.data.teachers) ? json.data.teachers : []
-        };
+      const text = await res.text();
+      const lines = text.trim().split('\n').filter(Boolean);
+      for (let i = lines.length - 1; i >= 0; i--) {
         try {
-          localStorage.setItem('sy_cloud_cache_v2', JSON.stringify(state));
-        } catch (e) {}
-        return state;
+          const item = JSON.parse(lines[i]);
+          if (item && item.event === 'message' && item.message) {
+            const parsed = JSON.parse(item.message);
+            if (parsed && typeof parsed === 'object') {
+              const state = {
+                students: Array.isArray(parsed.students) ? parsed.students : [],
+                sessions: Array.isArray(parsed.sessions) ? parsed.sessions : [],
+                logs: Array.isArray(parsed.logs) ? parsed.logs : [],
+                hodAccounts: parsed.hodAccounts && typeof parsed.hodAccounts === 'object' ? parsed.hodAccounts : {},
+                teachers: Array.isArray(parsed.teachers) ? parsed.teachers : []
+              };
+              memoryCache = state;
+              lastFetchTime = now;
+              try { localStorage.setItem('sy_cloud_cache_v3', JSON.stringify(state)); } catch (e) {}
+              return state;
+            }
+          }
+        } catch (lineErr) {}
       }
     }
   } catch (err) {
-    console.warn('Cloud state fetch fallback to cache:', err.message);
+    console.warn('Cloud poll warning:', err.message);
   }
 
+  // Fallback to local storage
   try {
-    const raw = localStorage.getItem('sy_cloud_cache_v2');
-    return raw ? JSON.parse(raw) : { students: [], sessions: [], logs: [], hodAccounts: {}, teachers: [] };
-  } catch (e) {
-    return { students: [], sessions: [], logs: [], hodAccounts: {}, teachers: [] };
-  }
-}
-
-async function writeCloudState(state) {
-  try {
-    localStorage.setItem('sy_cloud_cache_v2', JSON.stringify(state));
+    const local = localStorage.getItem('sy_cloud_cache_v3');
+    if (local) {
+      const parsed = JSON.parse(local);
+      memoryCache = parsed;
+      return parsed;
+    }
   } catch (e) {}
 
+  return { students: [], sessions: [], logs: [], hodAccounts: {}, teachers: [] };
+}
+
+async function broadcastCloudState(state) {
+  memoryCache = state;
+  lastFetchTime = Date.now();
+  try { localStorage.setItem('sy_cloud_cache_v3', JSON.stringify(state)); } catch (e) {}
+
   try {
-    await fetch(CLOUD_STORE_URL, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: 'SY_ATTENDANCE_STATE',
-        data: state
-      })
+    const payload = JSON.stringify(state);
+    await fetch(SYNC_URL, {
+      method: 'POST',
+      headers: {
+        'Title': 'STATE_SYNC',
+        'Priority': 'urgent'
+      },
+      body: payload
     });
   } catch (err) {
-    console.warn('Cloud state write warning:', err.message);
+    console.warn('Cloud broadcast warning:', err.message);
   }
 }
 
@@ -105,7 +150,7 @@ export const CloudSync = {
       password: accountData.password,
       configuredAt: new Date().toISOString()
     };
-    await writeCloudState(state);
+    await broadcastCloudState(state);
     return state.hodAccounts[department];
   },
 
@@ -143,7 +188,7 @@ export const CloudSync = {
       state.students.push(cleanStudent);
     }
 
-    await writeCloudState(state);
+    await broadcastCloudState(state);
     return cleanStudent;
   },
 
@@ -151,7 +196,7 @@ export const CloudSync = {
     const state = await fetchCloudState();
     state.students = (state.students || []).filter(s => s.id !== studentId && s.rollNo !== Number(studentId));
     state.logs = (state.logs || []).filter(l => l.studentId !== studentId && l.rollNo !== Number(studentId));
-    await writeCloudState(state);
+    await broadcastCloudState(state);
   },
 
   resetDevice: async (studentId) => {
@@ -162,7 +207,7 @@ export const CloudSync = {
       }
       return s;
     });
-    await writeCloudState(state);
+    await broadcastCloudState(state);
   },
 
   // 3. Conducted Lecture Sessions
@@ -174,7 +219,7 @@ export const CloudSync = {
       list = list.filter(s => s.department === department);
     }
 
-    // Deduplicate sessions
+    // Deduplicate sessions by department, division, subjectName, and timestamp
     const dedupMap = new Map();
     list.forEach(sess => {
       const timeKey = sess.startTime ? sess.startTime.slice(0, 16) : (sess.date || sess.id);
@@ -198,24 +243,27 @@ export const CloudSync = {
   },
 
   saveSession: async (session) => {
+    const cleanSess = sanitizeSession(session);
+    if (!cleanSess) return session;
+
     const state = await fetchCloudState();
     state.sessions = state.sessions || [];
 
-    const idx = state.sessions.findIndex(s => s.id === session.id);
+    const idx = state.sessions.findIndex(s => s.id === cleanSess.id);
     if (idx >= 0) {
-      state.sessions[idx] = { ...state.sessions[idx], ...session };
+      state.sessions[idx] = { ...state.sessions[idx], ...cleanSess };
     } else {
-      state.sessions.unshift(session);
+      state.sessions.unshift(cleanSess);
     }
 
-    await writeCloudState(state);
-    return session;
+    await broadcastCloudState(state);
+    return cleanSess;
   },
 
   deleteSession: async (sessionId) => {
     const state = await fetchCloudState();
     state.sessions = (state.sessions || []).filter(s => s.id !== sessionId);
-    await writeCloudState(state);
+    await broadcastCloudState(state);
   },
 
   // 4. Live Login Logs
@@ -239,12 +287,11 @@ export const CloudSync = {
     state.logs = state.logs || [];
     state.logs.unshift(cleanLog);
 
-    // Keep latest 100 logs
     if (state.logs.length > 100) {
       state.logs = state.logs.slice(0, 100);
     }
 
-    await writeCloudState(state);
+    await broadcastCloudState(state);
     return cleanLog;
   },
 
@@ -267,7 +314,7 @@ export const CloudSync = {
     } else {
       state.teachers.push(teacher);
     }
-    await writeCloudState(state);
+    await broadcastCloudState(state);
     return teacher;
   }
 };

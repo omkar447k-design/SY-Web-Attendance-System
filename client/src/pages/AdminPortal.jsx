@@ -58,7 +58,7 @@ export function AdminPortal({ hodProfile, onLaunchLectureAsHod }) {
     try {
       const [statsRes, studRes, teachRes, setRes, logsRes, lectRes] = await Promise.all([
         api.getAdminStats(currentDept),
-        api.getStudents({ division: divisionFilter, department: currentDept }),
+        api.getStudents({ department: currentDept }),
         api.getTeachers(),
         api.getSettings(),
         api.getLoginLogs(currentDept),
