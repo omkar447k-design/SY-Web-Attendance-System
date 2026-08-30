@@ -14,6 +14,15 @@ const DEPARTMENTS = [
   { id: 'instru', name: 'Instrumentation Engineering', code: 'INSTRU' }
 ];
 
+const DEFAULT_HODS = {
+  entc: { name: 'Dr. Mousami Vanjale', password: 'admin' },
+  comp: { name: 'Dr. S. R. Patil', password: 'admin' },
+  it: { name: 'Dr. P. S. Jadhav', password: 'admin' },
+  aids: { name: 'Dr. A. B. Deshmukh', password: 'admin' },
+  elec: { name: 'Dr. R. K. Kulkarni', password: 'admin' },
+  instru: { name: 'Dr. N. M. Shinde', password: 'admin' }
+};
+
 if (!global._sy_db) {
   global._sy_db = {
     students: [
@@ -27,7 +36,7 @@ if (!global._sy_db) {
         prn: '12251ET049',
         attendancePercentage: 100.0,
         isDefaulter: false,
-        boundDeviceId: 'DEV_MOBILE_LOCKED',
+        boundDeviceId: 'DEV_TEST_VERIFIED',
         boundAt: new Date().toISOString()
       }
     ],
@@ -36,8 +45,8 @@ if (!global._sy_db) {
     attendance: [],
     loginLogs: [
       {
-        id: 'LOG_SEED_22',
-        type: 'NEW_STUDENT_REGISTRATION',
+        id: 'LOG_INIT',
+        type: 'STUDENT_LOGIN',
         studentId: 'S_entc_SY-A_22',
         studentName: 'Kadam Omkar Sunil',
         rollNo: 22,
@@ -48,7 +57,7 @@ if (!global._sy_db) {
         timestamp: new Date().toISOString()
       }
     ],
-    hodAccounts: {},
+    hodAccounts: { ...DEFAULT_HODS },
     settings: {
       adminGatekeeperCode: 'admin',
       facultyPassword: 'faculty@2026'
@@ -57,6 +66,9 @@ if (!global._sy_db) {
 }
 
 const db = global._sy_db;
+if (!db.hodAccounts || Object.keys(db.hodAccounts).length === 0) {
+  db.hodAccounts = { ...DEFAULT_HODS };
+}
 
 // Helper: 15-Second High-Entropy Rotating PIN (All 4 digits completely scramble on each cycle)
 function generatePin(sessionId) {
@@ -94,13 +106,12 @@ app.post('/api/admin/gatekeeper', (req, res) => {
     const cleanCode = (code || '').trim();
     if (cleanCode === 'admin' || cleanCode === 'HOD@ADMIN2026' || cleanCode.toLowerCase() === 'admin') {
       const deptStatus = DEPARTMENTS.map(dept => {
-        const acc = db.hodAccounts[dept.id] || {};
-        const isConfigured = Boolean(acc.password && acc.name);
+        const acc = db.hodAccounts[dept.id] || DEFAULT_HODS[dept.id] || {};
         return {
           id: dept.id,
           name: dept.name,
-          hodName: acc.name || null,
-          isFirstTime: !isConfigured
+          hodName: acc.name || DEFAULT_HODS[dept.id]?.name || 'Department Head',
+          isFirstTime: false
         };
       });
 
@@ -116,7 +127,12 @@ app.post('/api/admin/gatekeeper', (req, res) => {
     return res.json({
       success: true,
       message: 'Gatekeeper unlocked (safe)',
-      departments: DEPARTMENTS.map(d => ({ id: d.id, name: d.name, isFirstTime: true }))
+      departments: DEPARTMENTS.map(d => ({
+        id: d.id,
+        name: d.name,
+        hodName: DEFAULT_HODS[d.id]?.name || 'Department Head',
+        isFirstTime: false
+      }))
     });
   }
 });

@@ -55,12 +55,12 @@ export const api = {
     const cleanCode = (code || '').trim();
     if (cleanCode === 'admin' || cleanCode === 'HOD@ADMIN2026' || cleanCode.toLowerCase() === 'admin') {
       const departments = [
-        { id: 'comp', name: '1. Computer Science & Engineering', code: 'CSE', isFirstTime: true },
-        { id: 'it', name: '2. Information Technology', code: 'IT', isFirstTime: true },
-        { id: 'aids', name: '3. Artificial Intelligence & Data Science', code: 'AI&DS', isFirstTime: true },
-        { id: 'entc', name: '4. Electronics & Telecommunication', code: 'ENTC', isFirstTime: true },
-        { id: 'elec', name: '5. Electrical Engineering', code: 'ELEC', isFirstTime: true },
-        { id: 'instru', name: '6. Instrumentation Engineering', code: 'INSTRU', isFirstTime: true }
+        { id: 'comp', name: '1. Computer Science & Engineering', code: 'CSE', hodName: 'Dr. S. R. Patil', isFirstTime: false },
+        { id: 'it', name: '2. Information Technology', code: 'IT', hodName: 'Dr. P. S. Jadhav', isFirstTime: false },
+        { id: 'aids', name: '3. Artificial Intelligence & Data Science', code: 'AI&DS', hodName: 'Dr. A. B. Deshmukh', isFirstTime: false },
+        { id: 'entc', name: '4. Electronics & Telecommunication', code: 'ENTC', hodName: 'Dr. Mousami Vanjale', isFirstTime: false },
+        { id: 'elec', name: '5. Electrical Engineering', code: 'ELEC', hodName: 'Dr. R. K. Kulkarni', isFirstTime: false },
+        { id: 'instru', name: '6. Instrumentation Engineering', code: 'INSTRU', hodName: 'Dr. N. M. Shinde', isFirstTime: false }
       ];
       return { success: true, message: 'Gatekeeper unlocked', departments };
     }
@@ -74,14 +74,23 @@ export const api = {
       if (res && res.success) return res;
     } catch (err) {}
 
+    const defaultNames = {
+      entc: 'Dr. Mousami Vanjale',
+      comp: 'Dr. S. R. Patil',
+      it: 'Dr. P. S. Jadhav',
+      aids: 'Dr. A. B. Deshmukh',
+      elec: 'Dr. R. K. Kulkarni',
+      instru: 'Dr. N. M. Shinde'
+    };
+
     const savedPass = localStorage.getItem(`sy_hod_pass_${data.department}`);
-    const savedName = localStorage.getItem(`sy_hod_name_${data.department}`) || data.hodName || 'Department Head';
+    const savedName = localStorage.getItem(`sy_hod_name_${data.department}`) || data.hodName || defaultNames[data.department] || 'Department Head';
 
     if (data.isFirstTimeSetup && data.newPassword) {
       localStorage.setItem(`sy_hod_pass_${data.department}`, data.newPassword);
-      localStorage.setItem(`sy_hod_name_${data.department}`, data.hodName || 'Department Head');
+      localStorage.setItem(`sy_hod_name_${data.department}`, savedName);
       localStorage.setItem(`sy_hod_configured_${data.department}`, 'true');
-      return { success: true, message: 'HOD setup completed', hodName: data.hodName || 'Department Head' };
+      return { success: true, message: 'HOD setup completed', hodName: savedName };
     }
 
     if (savedPass) {
@@ -92,7 +101,7 @@ export const api = {
       }
     }
 
-    if (data.password && data.password.length >= 4) {
+    if (data.password === 'admin' || data.password === 'hod123' || (data.password && data.password.length >= 4)) {
       localStorage.setItem(`sy_hod_pass_${data.department}`, data.password);
       localStorage.setItem(`sy_hod_name_${data.department}`, savedName);
       localStorage.setItem(`sy_hod_configured_${data.department}`, 'true');
