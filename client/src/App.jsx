@@ -10,6 +10,7 @@ export function App() {
   const [role, setRole] = useState(null);
   const [user, setUser] = useState(null);
   const [device, setDevice] = useState(null);
+  const [previousAdminUser, setPreviousAdminUser] = useState(null);
 
   useEffect(() => {
     async function initSession() {
@@ -40,15 +41,42 @@ export function App() {
   const handleLogout = () => {
     setRole(null);
     setUser(null);
+    setPreviousAdminUser(null);
     localStorage.removeItem('sy_auth_role');
     localStorage.removeItem('sy_auth_user');
   };
 
   const handleLaunchLectureAsHod = (teacherProfile) => {
+    setPreviousAdminUser(user);
     setRole('teacher');
     setUser(teacherProfile);
     localStorage.setItem('sy_auth_role', 'teacher');
     localStorage.setItem('sy_auth_user', JSON.stringify(teacherProfile));
+  };
+
+  const handleBackFromTeacher = () => {
+    if (previousAdminUser) {
+      setRole('admin');
+      setUser(previousAdminUser);
+      localStorage.setItem('sy_auth_role', 'admin');
+      localStorage.setItem('sy_auth_user', JSON.stringify(previousAdminUser));
+      return;
+    }
+
+    const isHodTeacher = user?.id?.startsWith('T_HOD_');
+    if (isHodTeacher) {
+      const hodUser = {
+        name: user.name,
+        department: user.department,
+        role: 'admin'
+      };
+      setRole('admin');
+      setUser(hodUser);
+      localStorage.setItem('sy_auth_role', 'admin');
+      localStorage.setItem('sy_auth_user', JSON.stringify(hodUser));
+    } else {
+      handleLogout();
+    }
   };
 
   return (
@@ -63,7 +91,7 @@ export function App() {
         )}
 
         {role === 'teacher' && user && (
-          <TeacherPortal teacher={user} />
+          <TeacherPortal teacher={user} onBack={handleBackFromTeacher} />
         )}
 
         {role === 'admin' && (
