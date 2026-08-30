@@ -1,7 +1,44 @@
-// REAL-TIME PERMANENT CROSS-DEVICE CLOUD DATABASE ENGINE
-// Synchronizes HOD Accounts, Student Rosters, Live Logins, and Conducted Lectures across Mobile and Desktop.
+// HIGH-PERFORMANCE REAL-TIME CLOUD DATABASE ENGINE
+// Synchronizes HOD Accounts, Student Rosters, Live Logins, and Conducted Lectures across all devices.
 
 const CLOUD_STORE_URL = 'https://api.restful-api.dev/objects/ff808181a04ccf2d01a0526641ec1632';
+
+// Lightweight payload sanitizer (prevents multi-megabyte base64 from blocking HTTP network sync)
+function sanitizeStudent(s) {
+  if (!s) return null;
+  return {
+    id: s.id || `S_${s.department || 'entc'}_${s.division || 'SY-A'}_${s.rollNo}`,
+    rollNo: Number(s.rollNo),
+    name: (s.name || 'Student').trim(),
+    prn: (s.prn || '').trim().toUpperCase(),
+    department: s.department || 'entc',
+    division: s.division || 'SY-A',
+    batch: s.batch || (Number(s.rollNo) <= 20 ? 'B1' : Number(s.rollNo) <= 40 ? 'B2' : 'B3'),
+    idCardPhoto: s.idCardPhoto && s.idCardPhoto.length < 5000 ? s.idCardPhoto : null,
+    attendancePercentage: s.attendancePercentage || 100.0,
+    isDefaulter: Boolean(s.isDefaulter),
+    boundDeviceId: s.boundDeviceId || null,
+    boundAt: s.boundAt || new Date().toISOString()
+  };
+}
+
+function sanitizeLog(l) {
+  if (!l) return null;
+  return {
+    id: l.id || `LOG_${Date.now()}_${l.rollNo || 0}`,
+    type: l.type || 'STUDENT_LOGIN',
+    studentId: l.studentId,
+    studentName: (l.studentName || 'Student').trim(),
+    rollNo: Number(l.rollNo),
+    prn: (l.prn || '').trim().toUpperCase(),
+    department: l.department || 'entc',
+    division: l.division || 'SY-A',
+    idCardPhoto: l.idCardPhoto && l.idCardPhoto.length < 5000 ? l.idCardPhoto : null,
+    deviceId: l.deviceId,
+    status: l.status || 'VERIFIED_PHYSICAL_ID',
+    timestamp: l.timestamp || new Date().toISOString()
+  };
+}
 
 async function fetchCloudState() {
   try {
@@ -9,20 +46,23 @@ async function fetchCloudState() {
     if (res.ok) {
       const json = await res.json();
       if (json && json.data) {
-        return {
+        const state = {
           students: Array.isArray(json.data.students) ? json.data.students : [],
           sessions: Array.isArray(json.data.sessions) ? json.data.sessions : [],
           logs: Array.isArray(json.data.logs) ? json.data.logs : [],
           hodAccounts: json.data.hodAccounts && typeof json.data.hodAccounts === 'object' ? json.data.hodAccounts : {},
           teachers: Array.isArray(json.data.teachers) ? json.data.teachers : []
         };
+        try {
+          localStorage.setItem('sy_cloud_cache_v2', JSON.stringify(state));
+        } catch (e) {}
+        return state;
       }
     }
   } catch (err) {
-    console.warn('Cloud state fetch warning:', err.message);
+    console.warn('Cloud state fetch fallback to cache:', err.message);
   }
 
-  // Fallback to local cache if network drop
   try {
     const raw = localStorage.getItem('sy_cloud_cache_v2');
     return raw ? JSON.parse(raw) : { students: [], sessions: [], logs: [], hodAccounts: {}, teachers: [] };
@@ -51,7 +91,7 @@ async function writeCloudState(state) {
 }
 
 export const CloudSync = {
-  // 1. HOD Accounts (Permanent Cross-Device Creation & Verification)
+  // 1. HOD Accounts
   getHodAccounts: async () => {
     const state = await fetchCloudState();
     return state.hodAccounts || {};
@@ -86,22 +126,25 @@ export const CloudSync = {
   },
 
   saveStudent: async (student) => {
+    const cleanStudent = sanitizeStudent(student);
+    if (!cleanStudent) return student;
+
     const state = await fetchCloudState();
     state.students = state.students || [];
 
     const idx = state.students.findIndex(s =>
-      s.id === student.id ||
-      (s.rollNo === Number(student.rollNo) && s.department === student.department && s.division === student.division)
+      s.id === cleanStudent.id ||
+      (s.rollNo === Number(cleanStudent.rollNo) && s.department === cleanStudent.department && s.division === cleanStudent.division)
     );
 
     if (idx >= 0) {
-      state.students[idx] = { ...state.students[idx], ...student };
+      state.students[idx] = { ...state.students[idx], ...cleanStudent };
     } else {
-      state.students.push(student);
+      state.students.push(cleanStudent);
     }
 
     await writeCloudState(state);
-    return student;
+    return cleanStudent;
   },
 
   deleteStudent: async (studentId) => {
@@ -131,7 +174,7 @@ export const CloudSync = {
       list = list.filter(s => s.department === department);
     }
 
-    // Deduplicate sessions by department, division, subjectName, and timestamp
+    // Deduplicate sessions
     const dedupMap = new Map();
     list.forEach(sess => {
       const timeKey = sess.startTime ? sess.startTime.slice(0, 16) : (sess.date || sess.id);
@@ -189,15 +232,20 @@ export const CloudSync = {
   },
 
   saveLog: async (log) => {
+    const cleanLog = sanitizeLog(log);
+    if (!cleanLog) return log;
+
     const state = await fetchCloudState();
     state.logs = state.logs || [];
-    state.logs.unshift({
-      ...log,
-      id: log.id || `LOG_${Date.now()}`,
-      timestamp: log.timestamp || new Date().toISOString()
-    });
+    state.logs.unshift(cleanLog);
+
+    // Keep latest 100 logs
+    if (state.logs.length > 100) {
+      state.logs = state.logs.slice(0, 100);
+    }
+
     await writeCloudState(state);
-    return log;
+    return cleanLog;
   },
 
   // 5. Teachers

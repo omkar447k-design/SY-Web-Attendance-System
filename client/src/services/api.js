@@ -114,12 +114,23 @@ export const api = {
   },
 
   getLoginLogs: async (department) => {
-    const logs = await CloudSync.getLogs(department);
-    return { success: true, data: logs };
+    let cloudLogs = await CloudSync.getLogs(department);
+    try {
+      const serverRes = await request(`/api/admin/logs?department=${department || 'entc'}`);
+      if (serverRes.success && Array.isArray(serverRes.data) && serverRes.data.length > 0) {
+        const map = new Map();
+        cloudLogs.forEach(l => map.set(l.id || `${l.rollNo}_${l.timestamp}`, l));
+        serverRes.data.forEach(l => map.set(l.id || `${l.rollNo}_${l.timestamp}`, { ...(map.get(l.id) || {}), ...l }));
+        cloudLogs = Array.from(map.values());
+      }
+    } catch (e) {}
+
+    cloudLogs.sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0));
+    return { success: true, data: cloudLogs };
   },
 
   getConductedLectures: async (department) => {
-    const sessions = await CloudSync.getSessions(department);
+    let sessions = await CloudSync.getSessions(department);
     return { success: true, data: sessions };
   },
 
@@ -148,8 +159,21 @@ export const api = {
   },
 
   getStudents: async (params = {}) => {
-    const list = await CloudSync.getStudents(params.department, params.division);
-    let filtered = list;
+    let cloudStudents = await CloudSync.getStudents(params.department, params.division);
+    try {
+      const serverRes = await request(`/api/admin/students?department=${params.department || 'entc'}&division=${params.division || ''}`);
+      if (serverRes.success && Array.isArray(serverRes.data) && serverRes.data.length > 0) {
+        const map = new Map();
+        cloudStudents.forEach(s => map.set(`${s.department}_${s.division}_${s.rollNo}`, s));
+        serverRes.data.forEach(s => {
+          const key = `${s.department}_${s.division}_${s.rollNo}`;
+          map.set(key, { ...(map.get(key) || {}), ...s });
+        });
+        cloudStudents = Array.from(map.values());
+      }
+    } catch (e) {}
+
+    let filtered = cloudStudents;
     if (params.search) {
       const q = params.search.toLowerCase();
       filtered = filtered.filter(s =>
@@ -158,21 +182,31 @@ export const api = {
         s.prn?.toLowerCase().includes(q)
       );
     }
+    filtered.sort((a, b) => Number(a.rollNo || 0) - Number(b.rollNo || 0));
     return { success: true, data: filtered };
   },
 
   addStudent: async (data) => {
     await CloudSync.saveStudent(data);
+    try {
+      await request('/api/admin/students', { method: 'POST', body: JSON.stringify(data) });
+    } catch (e) {}
     return { success: true, message: 'Student added to roster', data };
   },
 
   deleteStudent: async (studentId) => {
     await CloudSync.deleteStudent(studentId);
+    try {
+      await request(`/api/admin/students/${studentId}/delete`, { method: 'POST' });
+    } catch (e) {}
     return { success: true, message: 'Student removed permanently from roster.' };
   },
 
   resetStudentDevice: async (studentId) => {
     await CloudSync.resetDevice(studentId);
+    try {
+      await request(`/api/admin/students/${studentId}/reset-device`, { method: 'POST' });
+    } catch (e) {}
     return { success: true, message: 'Student phone hardware binding reset' };
   },
 
