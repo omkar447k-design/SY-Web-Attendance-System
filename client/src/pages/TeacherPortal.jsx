@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Play, Plus, Square, Download, Users, Clock, CheckCircle, RefreshCw, UserPlus, Building2, CheckSquare, Square as SquareIcon } from 'lucide-react';
+import { Play, Plus, Square, Download, Users, Clock, CheckCircle, RefreshCw, UserPlus, Building2, CheckSquare, Square as SquareIcon, CheckCircle2, FileSpreadsheet, X } from 'lucide-react';
 import { api, getSocket } from '../services/api';
 import { TimerRing } from '../components/TimerRing';
 
@@ -14,6 +14,35 @@ const DEPARTMENTS = [
 
 const DIVISIONS = ['SY-A', 'SY-B', 'SY-C'];
 
+function exportSessionReportLocally(sessionData) {
+  if (!sessionData) return;
+  const attendees = sessionData.attendees || [];
+  const dateStr = new Date().toLocaleDateString('en-GB').replace(/\//g, '-');
+  const filename = `Attendance_${(sessionData.subjectName || 'Lecture').replace(/[^a-zA-Z0-9]/g, '_')}_${(sessionData.division || 'SY').replace(/[^a-zA-Z0-9]/g, '_')}_${dateStr}.csv`;
+
+  let csvContent = `\uFEFF` +
+    `ATTENDANCE REPORT - ${(sessionData.subjectName || 'Lecture').toUpperCase()}\n` +
+    `Teacher: ${sessionData.teacherName || 'Faculty'}, Department: ${(sessionData.department || 'ENTC').toUpperCase()}, Class/Division: ${sessionData.division || 'SY-A'}, Batch: ${sessionData.batch || 'All'}\n` +
+    `Session Date: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}\n` +
+    `Total Verified Present: ${attendees.length} / ${sessionData.totalStudents || 80}\n\n` +
+    `Sr No,Roll No,PRN,Student Name,Division,Timestamp,Status\n`;
+
+  attendees.forEach((att, idx) => {
+    const time = att.timestamp ? new Date(att.timestamp).toLocaleTimeString() : new Date().toLocaleTimeString();
+    csvContent += `${idx + 1},${att.rollNo || ''},"${att.prn || ''}","${att.studentName || ''}",${att.division || ''},${time},PRESENT\n`;
+  });
+
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.setAttribute('download', filename);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
 export function TeacherPortal({ teacher }) {
   const [activeSession, setActiveSession] = useState(null);
   const [teacherName, setTeacherName] = useState(teacher.name || 'Faculty Member');
@@ -24,6 +53,9 @@ export function TeacherPortal({ teacher }) {
   const [durationMinutes, setDurationMinutes] = useState(3);
   const [loading, setLoading] = useState(false);
   const [manualRollNo, setManualRollNo] = useState('');
+  
+  // Completed Session Summary Modal State
+  const [completedSummary, setCompletedSummary] = useState(null);
 
   const loadActiveSession = async () => {
     try {
@@ -201,11 +233,24 @@ export function TeacherPortal({ teacher }) {
     if (!window.confirm('Are you sure you want to conclude this attendance session?')) return;
 
     try {
+      const sessionToSave = { ...activeSession };
       const res = await api.endSession(activeSession.id);
-      if (res.success) {
-        window.open(api.getSessionExcelUrl(activeSession.id), '_blank');
-        setActiveSession(null);
-      }
+      
+      // Auto-trigger direct CSV download for teacher
+      exportSessionReportLocally(sessionToSave);
+
+      // Show clean summary dialog
+      setCompletedSummary({
+        subjectName: sessionToSave.subjectName,
+        division: sessionToSave.division,
+        batch: sessionToSave.batch,
+        totalPresent: sessionToSave.totalPresent || (sessionToSave.attendees?.length || 0),
+        totalStudents: sessionToSave.totalStudents || (80 * (sessionToSave.divisions?.length || 1)),
+        attendees: sessionToSave.attendees || [],
+        sessionData: sessionToSave
+      });
+
+      setActiveSession(null);
     } catch (err) {
       alert(err.message || 'Failed to end session');
     }
@@ -250,14 +295,13 @@ export function TeacherPortal({ teacher }) {
 
         {activeSession && (
           <div className="flex items-center space-x-2 w-full sm:w-auto">
-            <a
-              href={api.getSessionExcelUrl(activeSession.id)}
-              download
-              className="w-full sm:w-auto flex items-center justify-center space-x-1.5 px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold uppercase tracking-wider transition active:scale-95 touch-target"
+            <button
+              onClick={() => exportSessionReportLocally(activeSession)}
+              className="w-full sm:w-auto flex items-center justify-center space-x-1.5 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold uppercase tracking-wider transition active:scale-95 touch-target"
             >
               <Download className="w-4 h-4 flex-shrink-0" />
-              <span>Export Lecture Sheet (.xlsx)</span>
-            </a>
+              <span>Export Attendance Sheet</span>
+            </button>
           </div>
         )}
       </div>
@@ -542,6 +586,49 @@ export function TeacherPortal({ teacher }) {
               </button>
             </div>
           </form>
+        </div>
+      )}
+
+      {/* LECTURE CONCLUDED SUMMARY MODAL */}
+      {completedSummary && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 p-6 sm:p-8 max-w-md w-full max-h-[90vh] overflow-y-auto shadow-xl text-center">
+            <CheckCircle2 className="w-12 h-12 text-emerald-600 mx-auto mb-2" />
+            <h3 className="text-lg sm:text-xl font-bold text-slate-900">Attendance Session Concluded</h3>
+            <p className="text-xs text-slate-500 mt-0.5 mb-4">Lecture attendance has been locked and archived.</p>
+
+            <div className="p-4 bg-slate-50 border border-slate-200 text-left space-y-2 mb-5">
+              <div className="flex justify-between text-xs">
+                <span className="text-slate-500 font-medium">Subject:</span>
+                <span className="font-bold text-slate-900">{completedSummary.subjectName}</span>
+              </div>
+              <div className="flex justify-between text-xs">
+                <span className="text-slate-500 font-medium">Divisions:</span>
+                <span className="font-bold text-slate-900">{completedSummary.division}</span>
+              </div>
+              <div className="flex justify-between text-xs border-t border-slate-200 pt-2">
+                <span className="text-slate-600 font-semibold">Total Verified Present:</span>
+                <span className="font-extrabold text-emerald-700">{completedSummary.totalPresent} / {completedSummary.totalStudents}</span>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <button
+                onClick={() => exportSessionReportLocally(completedSummary.sessionData)}
+                className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs uppercase tracking-wider flex items-center justify-center space-x-2 transition touch-target"
+              >
+                <Download className="w-4 h-4" />
+                <span>Download Report (.csv / Excel)</span>
+              </button>
+
+              <button
+                onClick={() => setCompletedSummary(null)}
+                className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs border border-slate-200 transition touch-target"
+              >
+                Start Next Lecture
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

@@ -1,33 +1,138 @@
 import { db } from '../config/db.js';
-import { PinService } from '../services/pinService.js';
+import { generateRotatingPin, verifyPin } from '../services/pinGenerator.js';
 import { ExcelService } from '../services/excelService.js';
 
 export class TeacherController {
+  static checkStatus(req, res) {
+    const { teacherName, department } = req.body;
+    if (!teacherName) {
+      return res.status(400).json({ success: false, error: 'Teacher name is required' });
+    }
+
+    const teachers = db.get('teachers');
+    const teacher = teachers.find(t => t.name?.toLowerCase() === teacherName.trim().toLowerCase());
+
+    if (!teacher || !teacher.password) {
+      return res.json({
+        success: true,
+        isFirstTime: true,
+        message: 'First-time login setup'
+      });
+    }
+
+    return res.json({
+      success: true,
+      isFirstTime: false,
+      teacher: {
+        id: teacher.id,
+        name: teacher.name,
+        department: teacher.department,
+        subjectName: teacher.subjectName
+      }
+    });
+  }
+
+  static auth(req, res) {
+    const { teacherName, department, subjectName, password, newPassword, isFirstTimeSetup } = req.body;
+
+    if (!teacherName) {
+      return res.status(400).json({ success: false, error: 'Faculty name is required' });
+    }
+
+    const teachers = db.get('teachers');
+    let teacher = teachers.find(t => t.name?.toLowerCase() === teacherName.trim().toLowerCase());
+
+    if (isFirstTimeSetup) {
+      if (!newPassword || newPassword.length < 4) {
+        return res.status(400).json({ success: false, error: 'Password must be at least 4 characters long' });
+      }
+
+      if (teacher) {
+        teacher.password = newPassword;
+        teacher.department = department || teacher.department;
+        teacher.subjectName = subjectName || teacher.subjectName;
+      } else {
+        teacher = {
+          id: `T_${department || 'entc'}_${Date.now()}`,
+          name: teacherName.trim(),
+          email: `${teacherName.trim().toLowerCase().replace(/\s+/g, '.')}@college.edu`,
+          department: department || 'entc',
+          subjectName: subjectName || 'Subject',
+          password: newPassword,
+          role: 'Teacher',
+          createdAt: new Date().toISOString()
+        };
+        teachers.push(teacher);
+      }
+
+      db.set('teachers', teachers);
+
+      return res.json({
+        success: true,
+        message: 'Password set successfully! Logging in...',
+        teacher: {
+          id: teacher.id,
+          name: teacher.name,
+          department: teacher.department,
+          subjectName: teacher.subjectName
+        }
+      });
+    }
+
+    if (!teacher || !teacher.password) {
+      return res.json({
+        success: true,
+        isFirstTime: true,
+        message: 'Please set your password first'
+      });
+    }
+
+    if (teacher.password !== password) {
+      return res.status(401).json({ success: false, error: 'Invalid password. Please try again.' });
+    }
+
+    if (subjectName) teacher.subjectName = subjectName;
+    if (department) teacher.department = department;
+    db.set('teachers', teachers);
+
+    return res.json({
+      success: true,
+      message: 'Authentication successful',
+      teacher: {
+        id: teacher.id,
+        name: teacher.name,
+        department: teacher.department,
+        subjectName: teacher.subjectName
+      }
+    });
+  }
+
   static getActiveSession(req, res) {
     const { teacherId } = req.query;
     const sessions = db.get('sessions');
     const active = sessions.find(s => s.status === 'active' && (!teacherId || s.teacherId === teacherId));
 
     if (!active) {
-      return res.json({ success: true, active: false });
+      return res.json({ success: true, active: false, message: 'No active session' });
     }
 
+    const pinInfo = generateRotatingPin(active.id);
     const now = new Date();
     const endTime = new Date(active.endTime);
-    if (now > endTime) {
+    const remainingSessionSec = Math.max(0, Math.ceil((endTime.getTime() - now.getTime()) / 1000));
+
+    if (remainingSessionSec <= 0) {
       active.status = 'closed';
       db.set('sessions', sessions);
-      return res.json({ success: true, active: false });
+      return res.json({ success: true, active: false, message: 'Session expired' });
     }
 
-    const pinInfo = PinService.getCurrentPinInfo(active.id);
     const attendance = db.get('attendance').filter(a => a.sessionId === active.id);
-    const sessionDivisions = active.divisions || [active.division];
+    const selectedDivs = active.divisions || [active.division || 'SY-A'];
     const registeredCount = db.get('students').filter(
-      s => (!active.department || s.department === active.department) && sessionDivisions.includes(s.division)
+      s => (!active.department || s.department === active.department) && selectedDivs.includes(s.division)
     ).length;
-    const totalStudents = Math.max(registeredCount, 80 * sessionDivisions.length);
-    const remainingSessionSec = Math.max(0, Math.ceil((endTime.getTime() - now.getTime()) / 1000));
+    const totalStudents = Math.max(registeredCount, 80 * selectedDivs.length);
 
     res.json({
       success: true,
@@ -44,22 +149,16 @@ export class TeacherController {
   }
 
   static startSession(req, res) {
-    const {
-      teacherId,
-      teacherName = 'Faculty Member',
-      subjectName,
-      department = 'comp',
-      divisions = ['SY-A'],
-      batch = 'All',
-      durationMinutes = 3
-    } = req.body;
+    const { teacherId, teacherName, subjectName, department, divisions, division, batch = 'All', durationMinutes = 3 } = req.body;
 
     if (!subjectName) {
-      return res.status(400).json({ success: false, error: 'Subject is required' });
+      return res.status(400).json({ success: false, error: 'Subject name is required' });
     }
 
-    const selectedDivs = Array.isArray(divisions) && divisions.length > 0 ? divisions : ['SY-A'];
-    const divisionLabel = selectedDivs.join(' + ');
+    const selectedDivs = divisions && divisions.length > 0 ? divisions : [division || 'SY-A'];
+    const duration = Number(durationMinutes) || 3;
+    const startTime = new Date();
+    const endTime = new Date(startTime.getTime() + duration * 60 * 1000);
 
     const sessions = db.get('sessions');
     sessions.forEach(s => {
@@ -68,25 +167,21 @@ export class TeacherController {
       }
     });
 
-    const now = new Date();
-    const duration = Math.min(Math.max(Number(durationMinutes) || 3, 1), 15);
-    const endTime = new Date(now.getTime() + duration * 60 * 1000);
-
     const newSession = {
       id: `SESS_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
-      teacherId,
-      teacherName,
       subjectId: `SUB_${Date.now()}`,
-      subjectName,
-      department,
-      division: divisionLabel,
+      subjectName: subjectName.trim(),
+      teacherId: teacherId || 'T_DEFAULT',
+      teacherName: teacherName || 'Faculty Member',
+      department: department || 'entc',
+      division: selectedDivs.join(', '),
       divisions: selectedDivs,
       batch,
-      startTime: now.toISOString(),
+      startTime: startTime.toISOString(),
       endTime: endTime.toISOString(),
       durationMinutes: duration,
       status: 'active',
-      totalPresent: 0
+      date: startTime.toISOString().split('T')[0]
     };
 
     sessions.push(newSession);
@@ -94,19 +189,17 @@ export class TeacherController {
 
     db.addLog({
       type: 'FACULTY_LECTURE_START',
-      teacherId,
-      teacherName,
-      department,
-      subjectName,
-      division: divisionLabel,
-      divisions: selectedDivs,
-      batch,
-      durationMinutes: duration,
-      status: 'LECTURE_SESSION_ACTIVE',
-      details: `Faculty ${teacherName} started lecture for ${divisionLabel}`
+      teacherId: newSession.teacherId,
+      teacherName: newSession.teacherName,
+      department: newSession.department,
+      subjectName: newSession.subjectName,
+      division: newSession.division,
+      batch: newSession.batch,
+      sessionId: newSession.id,
+      status: 'ATTENDANCE_ACTIVE'
     });
 
-    const pinInfo = PinService.getCurrentPinInfo(newSession.id);
+    const pinInfo = generateRotatingPin(newSession.id);
     const registeredCount = db.get('students').filter(
       s => (!department || s.department === department) && selectedDivs.includes(s.division)
     ).length;
@@ -153,25 +246,23 @@ export class TeacherController {
 
   static endSession(req, res) {
     const { sessionId } = req.body;
-    const sessions = db.get('sessions');
+    const sessions = db.get('sessions') || [];
     const session = sessions.find(s => s.id === sessionId);
 
-    if (!session) {
-      return res.status(404).json({ success: false, error: 'Session not found' });
+    if (session) {
+      session.status = 'closed';
+      session.endTime = new Date().toISOString();
+      db.set('sessions', sessions);
     }
 
-    session.status = 'closed';
-    session.endTime = new Date().toISOString();
-    db.set('sessions', sessions);
-
-    const attendance = db.get('attendance').filter(a => a.sessionId === session.id);
+    const attendance = (db.get('attendance') || []).filter(a => a.sessionId === sessionId);
     db.addLog({
       type: 'FACULTY_LECTURE_END',
-      teacherId: session.teacherId,
-      teacherName: session.teacherName,
-      department: session.department,
-      subjectName: session.subjectName,
-      division: session.division,
+      teacherId: session?.teacherId || 'T_FACULTY',
+      teacherName: session?.teacherName || 'Faculty Member',
+      department: session?.department || 'entc',
+      subjectName: session?.subjectName || 'Lecture',
+      division: session?.division || 'SY-A',
       totalPresent: attendance.length,
       status: 'LECTURE_CLOSED',
       details: `Lecture concluded with ${attendance.length} verified present students`
@@ -180,7 +271,7 @@ export class TeacherController {
     res.json({
       success: true,
       message: 'Session locked and attendance concluded',
-      session
+      session: session || { id: sessionId, status: 'closed' }
     });
   }
 
@@ -236,11 +327,27 @@ export class TeacherController {
   }
 
   static exportSessionExcel(req, res) {
-    const { sessionId } = req.params;
-    const buffer = ExcelService.generateSessionReport(sessionId);
+    try {
+      const { sessionId } = req.params;
+      const sessions = db.get('sessions') || [];
+      const session = sessions.find(s => s.id === sessionId) || {
+        id: sessionId,
+        subjectName: 'Lecture',
+        division: 'SY-A',
+        batch: 'All',
+        date: new Date().toISOString().split('T')[0]
+      };
 
-    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', `attachment; filename=Lecture_Attendance_${sessionId}.xlsx`);
-    res.send(buffer);
+      const attendance = db.get('attendance') || [];
+      const records = attendance.filter(a => a.sessionId === sessionId);
+      const buffer = ExcelService.generateSessionExcel(session, records);
+
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename=Lecture_Attendance_${sessionId}.xlsx`);
+      res.send(buffer);
+    } catch (err) {
+      console.error('Export session error:', err);
+      res.status(500).json({ success: false, error: err.message });
+    }
   }
 }
