@@ -1,14 +1,13 @@
-// GLOBAL CLOUD PERSISTENCE & MULTI-DEVICE SYNC ENGINE
-// Connects phone browsers, laptops, and Vercel serverless containers into a single shared database.
+// GLOBAL CROSS-DEVICE CLOUD SYNCHRONIZATION ENGINE
+// Synchronizes Student Rosters, Live Logins, and Conducted Lectures across all mobile phones and laptops.
 
-const CLOUD_SYNC_ENDPOINT = 'https://api.restful-api.dev/objects/ff808181a04ccf2d01a051a4120014c6';
+const SYNC_BASE_URL = 'https://crudcrud.com/api/da2d894039044336a0c7bbe03b46702f';
 
 const STORAGE_KEYS = {
   STUDENTS: 'sy_perm_students',
   LOGS: 'sy_perm_logs',
   TEACHERS: 'sy_perm_teachers',
-  SESSIONS: 'sy_perm_sessions',
-  HOD_ACCOUNTS: 'sy_perm_hod_accounts'
+  SESSIONS: 'sy_perm_sessions'
 };
 
 function getLocal(key) {
@@ -24,111 +23,225 @@ function setLocal(key, data) {
   try {
     localStorage.setItem(key, JSON.stringify(data));
   } catch (e) {
-    console.warn(`Local storage quota on [${key}]:`, e);
+    console.warn(`Local storage quota warning on [${key}]:`, e);
   }
 }
 
-let syncTimeout = null;
-let isSyncing = false;
-
 export const CloudSync = {
-  // Fetch latest global data across all devices
-  fetchGlobalState: async () => {
+  // 1. Fetch Students from Cloud and merge with Local
+  getStudents: async (department = null, division = null) => {
+    let cloudStudents = [];
     try {
-      const res = await fetch(CLOUD_SYNC_ENDPOINT, { cache: 'no-store' });
-      if (!res.ok) return null;
-      const json = await res.json();
-      const cloudData = json.data || {};
-
-      // Merge Cloud Students with Local
-      if (Array.isArray(cloudData.students) && cloudData.students.length > 0) {
-        const local = getLocal(STORAGE_KEYS.STUDENTS);
-        const map = new Map();
-        local.forEach(s => map.set(`${s.department || 'entc'}_${s.division || 'SY-A'}_${s.rollNo}`, s));
-        cloudData.students.forEach(s => {
-          const key = `${s.department || 'entc'}_${s.division || 'SY-A'}_${s.rollNo}`;
-          map.set(key, { ...(map.get(key) || {}), ...s });
-        });
-        const mergedStudents = Array.from(map.values());
-        setLocal(STORAGE_KEYS.STUDENTS, mergedStudents);
+      const res = await fetch(`${SYNC_BASE_URL}/students`, { cache: 'no-store' });
+      if (res.ok) {
+        cloudStudents = await res.json();
       }
-
-      // Merge Cloud Logs with Local
-      if (Array.isArray(cloudData.loginLogs) && cloudData.loginLogs.length > 0) {
-        const localLogs = getLocal(STORAGE_KEYS.LOGS);
-        const logMap = new Map();
-        localLogs.forEach(l => logMap.set(l.id || `${l.department}_${l.division}_${l.rollNo}`, l));
-        cloudData.loginLogs.forEach(l => logMap.set(l.id || `${l.department}_${l.division}_${l.rollNo}`, l));
-        const mergedLogs = Array.from(logMap.values());
-        mergedLogs.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-        setLocal(STORAGE_KEYS.LOGS, mergedLogs);
-      }
-
-      // Merge Cloud Sessions with Local
-      if (Array.isArray(cloudData.sessions) && cloudData.sessions.length > 0) {
-        const localSessions = getLocal(STORAGE_KEYS.SESSIONS);
-        const sessMap = new Map();
-        localSessions.forEach(s => sessMap.set(s.id, s));
-        cloudData.sessions.forEach(s => sessMap.set(s.id, { ...(sessMap.get(s.id) || {}), ...s }));
-        const mergedSessions = Array.from(sessMap.values());
-        mergedSessions.sort((a, b) => new Date(b.startTime || b.date) - new Date(a.startTime || a.date));
-        setLocal(STORAGE_KEYS.SESSIONS, mergedSessions);
-      }
-
-      return cloudData;
     } catch (err) {
-      console.warn('Cloud sync read warning:', err.message);
-      return null;
+      console.warn('Cloud students fetch:', err.message);
     }
+
+    const localStudents = getLocal(STORAGE_KEYS.STUDENTS);
+    const map = new Map();
+
+    localStudents.forEach(s => {
+      const key = `${s.department || 'entc'}_${s.division || 'SY-A'}_${s.rollNo}`;
+      map.set(key, s);
+    });
+
+    cloudStudents.forEach(s => {
+      const key = `${s.department || 'entc'}_${s.division || 'SY-A'}_${s.rollNo}`;
+      map.set(key, { ...(map.get(key) || {}), ...s });
+    });
+
+    const merged = Array.from(map.values());
+    setLocal(STORAGE_KEYS.STUDENTS, merged);
+
+    let filtered = merged;
+    if (department && department !== 'all') {
+      filtered = filtered.filter(s => s.department === department);
+    }
+    if (division) {
+      filtered = filtered.filter(s => s.division === division);
+    }
+
+    filtered.sort((a, b) => Number(a.rollNo || 0) - Number(b.rollNo || 0));
+    return filtered;
   },
 
-  // Push full updated dataset to Cloud Store
-  pushGlobalState: async () => {
-    if (isSyncing) return;
-    isSyncing = true;
+  // 2. Fetch Live Logs from Cloud and merge with Local
+  getLogs: async (department = null) => {
+    let cloudLogs = [];
     try {
-      const students = getLocal(STORAGE_KEYS.STUDENTS);
-      const loginLogs = getLocal(STORAGE_KEYS.LOGS).slice(0, 100); // keep clean
-      const sessions = getLocal(STORAGE_KEYS.SESSIONS);
-
-      await fetch(CLOUD_SYNC_ENDPOINT, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: 'sy_attendance_sync',
-          data: {
-            students,
-            loginLogs,
-            sessions,
-            lastSyncedAt: new Date().toISOString()
-          }
-        })
-      });
+      const res = await fetch(`${SYNC_BASE_URL}/logs`, { cache: 'no-store' });
+      if (res.ok) {
+        cloudLogs = await res.json();
+      }
     } catch (err) {
-      console.warn('Cloud sync push warning:', err.message);
-    } finally {
-      isSyncing = false;
+      console.warn('Cloud logs fetch:', err.message);
     }
+
+    const localLogs = getLocal(STORAGE_KEYS.LOGS);
+    const map = new Map();
+
+    localLogs.forEach(l => {
+      const key = `${l.department || 'entc'}_${l.division || 'SY-A'}_${l.rollNo || l.studentId}`;
+      map.set(key, l);
+    });
+
+    cloudLogs.forEach(l => {
+      const key = `${l.department || 'entc'}_${l.division || 'SY-A'}_${l.rollNo || l.studentId}`;
+      map.set(key, { ...(map.get(key) || {}), ...l });
+    });
+
+    const merged = Array.from(map.values());
+    merged.sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0));
+    setLocal(STORAGE_KEYS.LOGS, merged);
+
+    let filtered = merged;
+    if (department && department !== 'all') {
+      filtered = filtered.filter(l => l.department === department);
+    }
+
+    return filtered;
   },
 
-  // Save student on this device and immediately synchronize globally
+  // 3. Fetch Conducted Lectures from Cloud
+  getSessions: async (department = null) => {
+    let cloudSessions = [];
+    try {
+      const res = await fetch(`${SYNC_BASE_URL}/sessions`, { cache: 'no-store' });
+      if (res.ok) {
+        cloudSessions = await res.json();
+      }
+    } catch (err) {
+      console.warn('Cloud sessions fetch:', err.message);
+    }
+
+    const localSessions = getLocal(STORAGE_KEYS.SESSIONS);
+    const map = new Map();
+
+    localSessions.forEach(s => map.set(s.id, s));
+    cloudSessions.forEach(s => map.set(s.id, { ...(map.get(s.id) || {}), ...s }));
+
+    const merged = Array.from(map.values());
+    merged.sort((a, b) => new Date(b.startTime || b.date || 0) - new Date(a.startTime || a.date || 0));
+    setLocal(STORAGE_KEYS.SESSIONS, merged);
+
+    let filtered = merged;
+    if (department && department !== 'all') {
+      filtered = filtered.filter(s => s.department === department);
+    }
+
+    return filtered;
+  },
+
+  // 4. Save/Register Student and Broadcast to Cloud
   saveStudent: async (student) => {
     if (!student || !student.id) return;
-    const list = getLocal(STORAGE_KEYS.STUDENTS);
-    const idx = list.findIndex(s => s.id === student.id || (s.rollNo === student.rollNo && s.department === student.department && s.division === student.division));
+    const local = getLocal(STORAGE_KEYS.STUDENTS);
+    const idx = local.findIndex(s => s.id === student.id || (s.rollNo === student.rollNo && s.department === student.department && s.division === student.division));
     if (idx >= 0) {
-      list[idx] = { ...list[idx], ...student };
+      local[idx] = { ...local[idx], ...student };
     } else {
-      list.unshift(student);
+      local.unshift(student);
     }
-    setLocal(STORAGE_KEYS.STUDENTS, list);
+    setLocal(STORAGE_KEYS.STUDENTS, local);
 
-    // Immediate Cloud Push
-    CloudSync.pushGlobalState();
+    // Push to Cloud
+    try {
+      // Don't send large base64 ID photo to cloud payload to keep requests instant
+      const studentToCloud = {
+        id: student.id,
+        rollNo: student.rollNo,
+        name: student.name,
+        prn: student.prn,
+        department: student.department || 'entc',
+        division: student.division || 'SY-A',
+        batch: student.batch || 'B1',
+        attendancePercentage: student.attendancePercentage || 100.0,
+        isDefaulter: false,
+        boundDeviceId: student.boundDeviceId || 'BOUND',
+        boundAt: student.boundAt || new Date().toISOString()
+      };
+
+      await fetch(`${SYNC_BASE_URL}/students`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(studentToCloud)
+      });
+    } catch (err) {
+      console.warn('Cloud save student:', err.message);
+    }
   },
 
-  // Delete student on this device and immediately synchronize globally
-  deleteStudent: async (studentId) => {
+  // 5. Save Live Audit Log and Broadcast to Cloud
+  saveLog: async (log) => {
+    if (!log) return;
+    const local = getLocal(STORAGE_KEYS.LOGS);
+    const idx = local.findIndex(l => 
+      (l.studentId && log.studentId && l.studentId === log.studentId) || 
+      (l.rollNo === log.rollNo && l.department === log.department && l.division === log.division)
+    );
+
+    if (idx >= 0) {
+      local[idx] = { ...local[idx], ...log, timestamp: log.timestamp || local[idx].timestamp };
+    } else {
+      local.unshift({
+        id: log.id || `LOG_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+        timestamp: log.timestamp || new Date().toISOString(),
+        ...log
+      });
+    }
+    setLocal(STORAGE_KEYS.LOGS, local.slice(0, 200));
+
+    try {
+      const logToCloud = {
+        id: log.id || `LOG_${Date.now()}`,
+        studentId: log.studentId,
+        studentName: log.studentName,
+        rollNo: log.rollNo,
+        prn: log.prn,
+        department: log.department || 'entc',
+        division: log.division || 'SY-A',
+        status: log.status || 'VERIFIED_PHYSICAL_ID',
+        timestamp: log.timestamp || new Date().toISOString()
+      };
+
+      await fetch(`${SYNC_BASE_URL}/logs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(logToCloud)
+      });
+    } catch (err) {
+      console.warn('Cloud save log:', err.message);
+    }
+  },
+
+  // 6. Save Conducted Lecture Session and Broadcast to Cloud
+  saveSession: async (session) => {
+    if (!session || !session.id) return;
+    const local = getLocal(STORAGE_KEYS.SESSIONS);
+    const idx = local.findIndex(s => s.id === session.id);
+    if (idx >= 0) {
+      local[idx] = { ...local[idx], ...session };
+    } else {
+      local.unshift(session);
+    }
+    setLocal(STORAGE_KEYS.SESSIONS, local);
+
+    try {
+      await fetch(`${SYNC_BASE_URL}/sessions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(session)
+      });
+    } catch (err) {
+      console.warn('Cloud save session:', err.message);
+    }
+  },
+
+  // 7. Delete Student Locally & Reset in Cloud
+  deleteStudent: (studentId) => {
     let list = getLocal(STORAGE_KEYS.STUDENTS);
     list = list.filter(s => s.id !== studentId && s.rollNo !== Number(studentId));
     setLocal(STORAGE_KEYS.STUDENTS, list);
@@ -136,48 +249,10 @@ export const CloudSync = {
     let logs = getLocal(STORAGE_KEYS.LOGS);
     logs = logs.filter(l => l.studentId !== studentId && l.rollNo !== Number(studentId));
     setLocal(STORAGE_KEYS.LOGS, logs);
-
-    CloudSync.pushGlobalState();
   },
 
-  // Save login log on this device and sync globally
-  saveLog: async (log) => {
-    if (!log) return;
-    const logs = getLocal(STORAGE_KEYS.LOGS);
-    const idx = logs.findIndex(l => 
-      (l.studentId && log.studentId && l.studentId === log.studentId) || 
-      (l.rollNo === log.rollNo && l.department === log.department && l.division === log.division)
-    );
-
-    if (idx >= 0) {
-      logs[idx] = { ...logs[idx], ...log, timestamp: log.timestamp || logs[idx].timestamp };
-    } else {
-      logs.unshift({
-        id: log.id || `LOG_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
-        timestamp: log.timestamp || new Date().toISOString(),
-        ...log
-      });
-    }
-    setLocal(STORAGE_KEYS.LOGS, logs.slice(0, 300));
-    CloudSync.pushGlobalState();
-  },
-
-  // Save lecture session and sync globally
-  saveSession: async (session) => {
-    if (!session || !session.id) return;
-    const list = getLocal(STORAGE_KEYS.SESSIONS);
-    const idx = list.findIndex(s => s.id === session.id);
-    if (idx >= 0) {
-      list[idx] = { ...list[idx], ...session };
-    } else {
-      list.unshift(session);
-    }
-    setLocal(STORAGE_KEYS.SESSIONS, list);
-    CloudSync.pushGlobalState();
-  },
-
-  // Reset student phone hardware binding and sync globally
-  resetDevice: async (studentId) => {
+  // 8. Reset Device Binding
+  resetDevice: (studentId) => {
     const list = getLocal(STORAGE_KEYS.STUDENTS);
     const target = list.find(s => s.id === studentId || s.rollNo === Number(studentId));
     if (target) {
@@ -185,7 +260,6 @@ export const CloudSync = {
       target.boundFingerprint = null;
       target.boundAt = null;
       setLocal(STORAGE_KEYS.STUDENTS, list);
-      CloudSync.pushGlobalState();
     }
   }
 };

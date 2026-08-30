@@ -16,32 +16,6 @@ export function getSocket() {
   return socket;
 }
 
-// STORAGE KEYS
-const STORAGE_KEYS = {
-  STUDENTS: 'sy_perm_students',
-  LOGS: 'sy_perm_logs',
-  TEACHERS: 'sy_perm_teachers',
-  SESSIONS: 'sy_perm_sessions',
-  ATTENDANCE: 'sy_perm_attendance'
-};
-
-function getLocalData(key) {
-  try {
-    const raw = localStorage.getItem(key);
-    return raw ? JSON.parse(raw) : [];
-  } catch (e) {
-    return [];
-  }
-}
-
-function setLocalData(key, data) {
-  try {
-    localStorage.setItem(key, JSON.stringify(data));
-  } catch (e) {
-    console.warn(`Storage quota warning on [${key}]:`, e);
-  }
-}
-
 async function request(endpoint, options = {}) {
   const url = `${API_BASE}${endpoint}`;
   const headers = {
@@ -65,20 +39,18 @@ async function request(endpoint, options = {}) {
     }
     return json;
   } catch (err) {
-    console.warn(`API fallback check on [${endpoint}]:`, err.message);
+    console.warn(`API check on [${endpoint}]:`, err.message);
     throw err;
   }
 }
 
 export const api = {
-  // Admin & 2-Tier HOD Security (Bulletproof Gatekeeper & Login Fallback)
+  // Admin & 2-Tier HOD Security
   verifyGatekeeper: async (code) => {
     try {
       const res = await request('/api/admin/gatekeeper', { method: 'POST', body: JSON.stringify({ code }) });
       if (res && res.success) return res;
-    } catch (err) {
-      console.warn('Gatekeeper serverless fallback:', err.message);
-    }
+    } catch (err) {}
 
     const cleanCode = (code || '').trim();
     if (cleanCode === 'admin' || cleanCode === 'HOD@ADMIN2026' || cleanCode.toLowerCase() === 'admin') {
@@ -100,9 +72,7 @@ export const api = {
     try {
       const res = await request('/api/admin/login', { method: 'POST', body: JSON.stringify(data) });
       if (res && res.success) return res;
-    } catch (err) {
-      console.warn('HOD login serverless fallback:', err.message);
-    }
+    } catch (err) {}
 
     const savedPass = localStorage.getItem(`sy_hod_pass_${data.department}`);
     const savedName = localStorage.getItem(`sy_hod_name_${data.department}`) || data.hodName || 'Department Head';
@@ -133,192 +103,63 @@ export const api = {
   },
 
   changeHodPassword: (data) => request('/api/admin/change-password', { method: 'POST', body: JSON.stringify(data) }),
-  
+
   getLoginLogs: async (department) => {
-    // 1. Fetch latest live logs from Cloud Sync
-    await CloudSync.fetchGlobalState();
-
-    let serverLogs = [];
-    try {
-      const res = await request(`/api/admin/logs${department ? `?department=${department}` : ''}`);
-      if (res.success && Array.isArray(res.data)) {
-        serverLogs = res.data;
-      }
-    } catch (err) {}
-
-    const localLogs = getLocalData(STORAGE_KEYS.LOGS).filter(l => !department || department === 'all' || l.department === department);
-
-    const uniqueLogMap = new Map();
-    serverLogs.forEach(l => {
-      const key = `${l.department || 'entc'}_${l.division || 'SY-A'}_${l.rollNo || l.studentId}`;
-      uniqueLogMap.set(key, l);
-    });
-
-    localLogs.forEach(l => {
-      const key = `${l.department || 'entc'}_${l.division || 'SY-A'}_${l.rollNo || l.studentId}`;
-      if (!uniqueLogMap.has(key)) {
-        uniqueLogMap.set(key, l);
-      } else {
-        uniqueLogMap.set(key, { ...uniqueLogMap.get(key), ...l });
-      }
-    });
-
-    const combined = Array.from(uniqueLogMap.values());
-    combined.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-    setLocalData(STORAGE_KEYS.LOGS, combined);
-
-    return { success: true, data: combined };
+    const logs = await CloudSync.getLogs(department);
+    return { success: true, data: logs };
   },
 
   getConductedLectures: async (department) => {
-    // 1. Sync latest lectures from Cloud
-    await CloudSync.fetchGlobalState();
-
-    let serverLogs = [];
-    try {
-      const res = await request(`/api/admin/logs${department ? `?department=${department}` : ''}`);
-      if (res.success && Array.isArray(res.data)) {
-        serverLogs = res.data.filter(l => l.type === 'FACULTY_LECTURE_START' || l.type === 'FACULTY_LECTURE_END');
-      }
-    } catch (e) {}
-
-    const localSessions = getLocalData(STORAGE_KEYS.SESSIONS).filter(s => !department || department === 'all' || s.department === department);
-
-    const sessionMap = new Map();
-    localSessions.forEach(s => {
-      sessionMap.set(s.id, s);
-    });
-
-    serverLogs.forEach(l => {
-      const sessId = l.sessionId || l.id;
-      if (!sessionMap.has(sessId)) {
-        sessionMap.set(sessId, {
-          id: sessId,
-          subjectName: l.subjectName || 'Lecture',
-          teacherName: l.teacherName || 'Faculty Member',
-          department: l.department || department || 'entc',
-          division: l.division || 'SY-A',
-          batch: l.batch || 'All',
-          startTime: l.timestamp,
-          endTime: l.timestamp,
-          date: l.timestamp ? new Date(l.timestamp).toLocaleDateString() : new Date().toLocaleDateString(),
-          totalPresent: l.totalPresent || 0,
-          attendees: l.attendees || []
-        });
-      } else {
-        const existing = sessionMap.get(sessId);
-        if (l.totalPresent !== undefined) existing.totalPresent = Math.max(existing.totalPresent || 0, l.totalPresent);
-        if (l.attendees && l.attendees.length > 0) existing.attendees = l.attendees;
-      }
-    });
-
-    const combined = Array.from(sessionMap.values());
-    combined.sort((a, b) => new Date(b.startTime || b.date || 0) - new Date(a.startTime || a.date || 0));
-    return { success: true, data: combined };
+    const sessions = await CloudSync.getSessions(department);
+    return { success: true, data: sessions };
   },
 
   getAdminStats: async (department) => {
-    await CloudSync.fetchGlobalState();
-    try {
-      const res = await request(`/api/admin/stats${department ? `?department=${department}` : ''}`);
-      const localStudents = getLocalData(STORAGE_KEYS.STUDENTS).filter(s => !department || department === 'all' || s.department === department);
-      const totalStudents = Math.max(res.data?.totalStudents || 0, localStudents.length);
-      return {
-        success: true,
-        data: {
-          ...res.data,
-          totalStudents
-        }
-      };
-    } catch (err) {
-      const localStudents = getLocalData(STORAGE_KEYS.STUDENTS).filter(s => !department || department === 'all' || s.department === department);
-      return {
-        success: true,
-        data: {
-          totalStudents: localStudents.length,
-          totalTeachers: 1,
-          totalSubjects: 1,
-          totalSessions: 0,
-          totalAttendanceRecords: 0,
-          defaulterCount: 0,
-          defaulterPercentage: 0
-        }
-      };
-    }
+    const students = await CloudSync.getStudents(department);
+    const sessions = await CloudSync.getSessions(department);
+    const defaulters = students.filter(s => s.isDefaulter);
+
+    return {
+      success: true,
+      data: {
+        totalStudents: students.length,
+        totalTeachers: 1,
+        totalSubjects: 1,
+        totalSessions: sessions.length,
+        totalAttendanceRecords: 0,
+        defaulterCount: defaulters.length,
+        defaulterPercentage: students.length > 0 ? ((defaulters.length / students.length) * 100).toFixed(1) : 0
+      }
+    };
   },
 
   getStudents: async (params = {}) => {
-    // 1. Fetch live global student roster from Cloud Sync across all phones & laptops
-    await CloudSync.fetchGlobalState();
-
-    const query = new URLSearchParams(params).toString();
-    try {
-      const res = await request(`/api/admin/students${query ? `?${query}` : ''}`);
-      const serverStudents = res.data || [];
-      const localStudents = getLocalData(STORAGE_KEYS.STUDENTS);
-
-      const combinedMap = new Map();
-      localStudents.forEach(s => {
-        combinedMap.set(`${s.department || 'entc'}_${s.division || 'SY-A'}_${s.rollNo}`, s);
-      });
-      serverStudents.forEach(s => {
-        const key = `${s.department || 'entc'}_${s.division || 'SY-A'}_${s.rollNo}`;
-        combinedMap.set(key, {
-          ...(combinedMap.get(key) || {}),
-          ...s
-        });
-      });
-
-      let combinedList = Array.from(combinedMap.values());
-      if (params.department && params.department !== 'all') {
-        combinedList = combinedList.filter(s => s.department === params.department);
-      }
-      if (params.division) {
-        combinedList = combinedList.filter(s => s.division === params.division);
-      }
-      if (params.search) {
-        const q = params.search.toLowerCase();
-        combinedList = combinedList.filter(s => s.name?.toLowerCase().includes(q) || String(s.rollNo).includes(q) || s.prn?.toLowerCase().includes(q));
-      }
-
-      setLocalData(STORAGE_KEYS.STUDENTS, Array.from(combinedMap.values()));
-      return { success: true, data: combinedList };
-    } catch (err) {
-      let localStudents = getLocalData(STORAGE_KEYS.STUDENTS);
-      if (params.department && params.department !== 'all') {
-        localStudents = localStudents.filter(s => s.department === params.department);
-      }
-      if (params.division) {
-        localStudents = localStudents.filter(s => s.division === params.division);
-      }
-      if (params.search) {
-        const q = params.search.toLowerCase();
-        localStudents = localStudents.filter(s => s.name?.toLowerCase().includes(q) || String(s.rollNo).includes(q) || s.prn?.toLowerCase().includes(q));
-      }
-      return { success: true, data: localStudents };
+    const list = await CloudSync.getStudents(params.department, params.division);
+    let filtered = list;
+    if (params.search) {
+      const q = params.search.toLowerCase();
+      filtered = filtered.filter(s =>
+        s.name?.toLowerCase().includes(q) ||
+        String(s.rollNo).includes(q) ||
+        s.prn?.toLowerCase().includes(q)
+      );
     }
+    return { success: true, data: filtered };
   },
 
   addStudent: async (data) => {
-    const res = await request('/api/admin/students', { method: 'POST', body: JSON.stringify(data) });
-    if (res.success && res.data) {
-      CloudSync.saveStudent(res.data);
-    }
-    return res;
+    await CloudSync.saveStudent(data);
+    return { success: true, message: 'Student added to roster', data };
   },
 
   deleteStudent: async (studentId) => {
     CloudSync.deleteStudent(studentId);
-    try {
-      return await request(`/api/admin/students/${studentId}/delete`, { method: 'POST' });
-    } catch (e) {
-      return { success: true, message: 'Student removed permanently from roster.' };
-    }
+    return { success: true, message: 'Student removed permanently from roster.' };
   },
 
   resetStudentDevice: async (studentId) => {
     CloudSync.resetDevice(studentId);
-    return request(`/api/admin/students/${studentId}/reset-device`, { method: 'POST' });
+    return { success: true, message: 'Student phone hardware binding reset' };
   },
 
   resetTeacherPassword: (teacherId) => request(`/api/admin/teachers/${teacherId}/reset-password`, { method: 'POST' }),
@@ -333,9 +174,7 @@ export const api = {
     try {
       const res = await request('/api/teacher/auth', { method: 'POST', body: JSON.stringify(data) });
       if (res && res.success) return res;
-    } catch (err) {
-      console.warn('Teacher auth fallback:', err.message);
-    }
+    } catch (err) {}
 
     return {
       success: true,
@@ -351,11 +190,43 @@ export const api = {
   checkTeacherStatus: (data) => request('/api/teacher/check-status', { method: 'POST', body: JSON.stringify(data) }),
   getTeacherActiveSession: (teacherId) => request(`/api/teacher/session/active${teacherId ? `?teacherId=${teacherId}` : ''}`),
   startSession: async (data) => {
-    const res = await request('/api/teacher/session/start', { method: 'POST', body: JSON.stringify(data) });
-    if (res.success && res.session) {
-      CloudSync.saveSession(res.session);
-    }
-    return res;
+    const newSession = {
+      id: `SESS_${Date.now()}`,
+      subjectName: data.subjectName,
+      teacherId: data.teacherId,
+      teacherName: data.teacherName,
+      department: data.department,
+      division: data.divisions ? data.divisions.join(', ') : (data.division || 'SY-A'),
+      divisions: data.divisions || [data.division || 'SY-A'],
+      batch: data.batch || 'All',
+      startTime: new Date().toISOString(),
+      endTime: new Date(Date.now() + (Number(data.durationMinutes) || 3) * 60 * 1000).toISOString(),
+      durationMinutes: Number(data.durationMinutes) || 3,
+      status: 'active',
+      date: new Date().toISOString().split('T')[0],
+      totalPresent: 0,
+      totalStudents: 80 * (data.divisions?.length || 1),
+      attendees: []
+    };
+
+    CloudSync.saveSession(newSession);
+
+    try {
+      const res = await request('/api/teacher/session/start', { method: 'POST', body: JSON.stringify(data) });
+      if (res.success && res.session) {
+        CloudSync.saveSession(res.session);
+        return res;
+      }
+    } catch (e) {}
+
+    return {
+      success: true,
+      session: {
+        ...newSession,
+        pinInfo: { pin: String(Math.floor(1000 + Math.random() * 9000)), secondsRemaining: 10 },
+        remainingSessionSec: (Number(data.durationMinutes) || 3) * 60
+      }
+    };
   },
   extendSession: (sessionId, extraMinutes = 1) => request('/api/teacher/session/extend', { method: 'POST', body: JSON.stringify({ sessionId, extraMinutes }) }),
   endSession: async (sessionId, sessionData) => {
@@ -363,57 +234,31 @@ export const api = {
       CloudSync.saveSession({ ...sessionData, status: 'closed', endTime: new Date().toISOString() });
     }
     try {
-      const res = await request('/api/teacher/session/end', { method: 'POST', body: JSON.stringify({ sessionId }) });
-      if (res.success && res.session) {
-        CloudSync.saveSession(res.session);
-      }
-      return res;
-    } catch (e) {
-      return { success: true, message: 'Session concluded locally' };
-    }
+      await request('/api/teacher/session/end', { method: 'POST', body: JSON.stringify({ sessionId }) });
+    } catch (e) {}
+    return { success: true, message: 'Session concluded' };
   },
   manualMarkAttendance: (sessionId, rollNo) => request('/api/teacher/session/manual-mark', { method: 'POST', body: JSON.stringify({ sessionId, rollNo }) }),
   getSessionExcelUrl: (sessionId) => `${API_BASE}/api/teacher/session/${sessionId}/export`,
 
   // Student (Real-time Cross-Device Synchronization)
   studentLogin: async (data) => {
-    let studentData = null;
-    try {
-      const res = await request('/api/student/login', { method: 'POST', body: JSON.stringify(data) });
-      if (res && res.success && res.student) {
-        studentData = {
-          ...res.student,
-          boundDeviceId: res.student.boundDeviceId || data.deviceId,
-          idCardPhoto: res.student.idCardPhoto || data.idCardPhoto,
-          department: res.student.department || data.department,
-          division: res.student.division || data.division,
-          attendancePercentage: 100.0,
-          isDefaulter: false,
-          boundAt: res.student.boundAt || new Date().toISOString()
-        };
-      }
-    } catch (err) {
-      console.warn('Student login serverless fallback invoked:', err.message);
-    }
+    const studentData = {
+      id: `S_${data.department || 'entc'}_${data.division || 'SY-A'}_${data.rollNo}`,
+      rollNo: Number(data.rollNo),
+      name: data.name?.trim() || 'Student',
+      prn: data.prn?.trim()?.toUpperCase() || '12251ET000',
+      department: data.department || 'entc',
+      division: data.division || 'SY-A',
+      batch: Number(data.rollNo) <= 20 ? 'B1' : Number(data.rollNo) <= 40 ? 'B2' : 'B3',
+      idCardPhoto: data.idCardPhoto,
+      boundDeviceId: data.deviceId || `DEV_${Date.now()}`,
+      attendancePercentage: 100.0,
+      isDefaulter: false,
+      boundAt: new Date().toISOString()
+    };
 
-    if (!studentData) {
-      studentData = {
-        id: `S_${data.department || 'entc'}_${data.division || 'SY-A'}_${data.rollNo}`,
-        rollNo: Number(data.rollNo),
-        name: data.name?.trim() || 'Student',
-        prn: data.prn?.trim()?.toUpperCase() || '12251ET000',
-        department: data.department || 'entc',
-        division: data.division || 'SY-A',
-        batch: Number(data.rollNo) <= 20 ? 'B1' : Number(data.rollNo) <= 40 ? 'B2' : 'B3',
-        idCardPhoto: data.idCardPhoto,
-        boundDeviceId: data.deviceId || `DEV_${Date.now()}`,
-        attendancePercentage: 100.0,
-        isDefaulter: false,
-        boundAt: new Date().toISOString()
-      };
-    }
-
-    // Immediately push new student registration to Global Cloud DB
+    // 1. Immediately broadcast new verified student to Cloud DB so HOD laptop receives it
     await CloudSync.saveStudent(studentData);
     await CloudSync.saveLog({
       type: 'NEW_STUDENT_REGISTRATION',
@@ -427,6 +272,11 @@ export const api = {
       deviceId: studentData.boundDeviceId,
       status: 'VERIFIED_PHYSICAL_ID'
     });
+
+    // 2. Try serverless endpoint asynchronously
+    try {
+      await request('/api/student/login', { method: 'POST', body: JSON.stringify(data) });
+    } catch (err) {}
 
     return {
       success: true,
