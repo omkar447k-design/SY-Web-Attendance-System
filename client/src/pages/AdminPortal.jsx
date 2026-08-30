@@ -504,6 +504,7 @@ export function AdminPortal({ hodProfile, onLaunchLectureAsHod }) {
                     <th className="py-2.5 px-3">Roll</th>
                     <th className="py-2.5 px-3">PRN</th>
                     <th className="py-2.5 px-3">Student Name</th>
+                    <th className="py-2.5 px-3">Division</th>
                     <th className="py-2.5 px-3">ID Card</th>
                     <th className="py-2.5 px-3">Attendance</th>
                     <th className="py-2.5 px-3">1-Phone Lock</th>
@@ -516,6 +517,11 @@ export function AdminPortal({ hodProfile, onLaunchLectureAsHod }) {
                       <td className="py-2.5 px-3 font-bold text-slate-900">#{student.rollNo}</td>
                       <td className="py-2.5 px-3 text-slate-500 font-mono text-xs">{student.prn}</td>
                       <td className="py-2.5 px-3 font-semibold text-slate-900">{student.name}</td>
+                      <td className="py-2.5 px-3">
+                        <span className="px-2 py-0.5 bg-slate-100 text-slate-800 font-bold text-xs border border-slate-200">
+                          {student.division || 'SY-A'}{student.batch && student.batch !== 'All' ? ` • ${student.batch}` : ''}
+                        </span>
+                      </td>
                       <td className="py-2.5 px-3">
                         {student.idCardPhoto ? (
                           <button
