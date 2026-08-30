@@ -88,8 +88,8 @@ export function TeacherPortal({ teacher, onBack }) {
       const endTimeMs = new Date(activeSession.endTime).getTime();
       const remainingSec = Math.max(0, Math.ceil((endTimeMs - now) / 1000));
 
-      const msIntoSlot = now % 10000;
-      const secondsRemainingInSlot = Math.max(1, 10 - Math.floor(msIntoSlot / 1000));
+      const msIntoSlot = now % 15000;
+      const secondsRemainingInSlot = Math.max(1, 15 - Math.floor(msIntoSlot / 1000));
 
       if (remainingSec <= 0) {
         setActiveSession(prev => prev ? { ...prev, remainingSessionSec: 0, status: 'closed' } : null);
@@ -385,7 +385,7 @@ export function TeacherPortal({ teacher, onBack }) {
               {/* GIANT PIN BOX */}
               <div className="my-5 sm:my-6 inline-flex flex-col items-center p-5 sm:p-8 bg-black/60 border border-white/20 max-w-full">
                 <span className="text-xs uppercase font-bold tracking-widest text-slate-400 mb-3 text-center">
-                  CLASSROOM ACTIVE PIN (ROTATES IN 10s)
+                  CLASSROOM ACTIVE PIN (ROTATES IN 15s)
                 </span>
                 
                 <div className="flex items-center space-x-2 sm:space-x-4 max-w-full justify-center">
@@ -401,7 +401,7 @@ export function TeacherPortal({ teacher, onBack }) {
 
                 <div className="mt-4 flex items-center space-x-2 text-xs text-sky-400 font-semibold">
                   <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                  <span>Rotating new PIN in {activeSession.pinInfo?.secondsRemaining || 10}s</span>
+                  <span>Rotating new PIN in {activeSession.pinInfo?.secondsRemaining || 15}s</span>
                 </div>
               </div>
 
@@ -433,7 +433,7 @@ export function TeacherPortal({ teacher, onBack }) {
               <TimerRing
                 remainingSec={activeSession.remainingSessionSec}
                 totalSec={(activeSession.durationMinutes || 3) * 60}
-                pinSeconds={activeSession.pinInfo?.secondsRemaining || 10}
+                pinSeconds={activeSession.pinInfo?.secondsRemaining || 15}
               />
 
               <div className="w-full pt-3 border-t border-white/15">
@@ -529,7 +529,7 @@ export function TeacherPortal({ teacher, onBack }) {
               <div className="text-center mb-6">
                 <Play className="w-8 h-8 text-slate-800 mx-auto mb-2 stroke-[1.5]" />
                 <h3 className="text-lg sm:text-xl font-bold text-slate-900">Start Lecture Attendance</h3>
-                <p className="text-slate-500 text-xs mt-0.5">Launches the 10-second rotating PIN on screen for students.</p>
+                <p className="text-slate-500 text-xs mt-0.5">Launches the 15-second rotating PIN on screen for students.</p>
               </div>
 
               <form onSubmit={handleStartSession} className="space-y-4">

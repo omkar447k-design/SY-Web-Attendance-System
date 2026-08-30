@@ -60,17 +60,29 @@ if (!global._sy_db) {
 
 const db = global._sy_db;
 
-// Helper: 10-Second Rotating PIN
+// Helper: 15-Second High-Entropy Rotating PIN (All 4 digits completely scramble on each cycle)
 function generatePin(sessionId) {
-  const now = Math.floor(Date.now() / 10000);
-  let hash = 0;
-  const str = `${sessionId}_${now}`;
+  const ROTATION_SECONDS = 15;
+  const timeSlot = Math.floor(Date.now() / (ROTATION_SECONDS * 1000));
+  
+  // High-entropy avalanche hash mix so EVERY digit changes unpredictably
+  let h = 0x811c9dc5;
+  const str = `SY_ATTENDANCE_SALT_${sessionId}_${timeSlot}_SECURE_2026`;
   for (let i = 0; i < str.length; i++) {
-    hash = ((hash << 5) - hash) + str.charCodeAt(i);
-    hash |= 0;
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+    h = (h << 13) | (h >>> 19);
+    h = Math.imul(h, 5) + 0xe6546b64;
   }
-  const pin = String(Math.abs(hash) % 9000 + 1000);
-  const secondsRemaining = 10 - (Math.floor(Date.now() / 1000) % 10);
+  
+  h ^= h >>> 16;
+  h = Math.imul(h, 0x85ebca6b);
+  h ^= h >>> 13;
+  h = Math.imul(h, 0xc2b2ae35);
+  h ^= h >>> 16;
+
+  const pin = String(Math.abs(h) % 9000 + 1000);
+  const secondsRemaining = ROTATION_SECONDS - (Math.floor(Date.now() / 1000) % ROTATION_SECONDS);
   return { pin, secondsRemaining };
 }
 

@@ -1,6 +1,6 @@
 import React from 'react';
 
-export function TimerRing({ secondsRemaining = 10, totalSeconds = 10, size = 70, stroke = 6 }) {
+export function TimerRing({ secondsRemaining = 15, totalSeconds = 15, size = 70, stroke = 6 }) {
   const radius = (size - stroke) / 2;
   const circumference = 2 * Math.PI * radius;
   const progress = Math.max(0, Math.min(1, secondsRemaining / totalSeconds));
