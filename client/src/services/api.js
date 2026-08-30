@@ -1,4 +1,5 @@
 import { io } from 'socket.io-client';
+import { CloudSync } from './cloudSync';
 
 const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
   ? `http://${window.location.hostname}:5000`
@@ -15,7 +16,7 @@ export function getSocket() {
   return socket;
 }
 
-// PERMANENT LOCAL STORAGE BACKED REPOSITORY
+// STORAGE KEYS
 const STORAGE_KEYS = {
   STUDENTS: 'sy_perm_students',
   LOGS: 'sy_perm_logs',
@@ -39,60 +40,6 @@ function setLocalData(key, data) {
   } catch (e) {
     console.warn(`Storage quota warning on [${key}]:`, e);
   }
-}
-
-function saveStudentLocally(student) {
-  if (!student || !student.id) return;
-  const list = getLocalData(STORAGE_KEYS.STUDENTS);
-  const idx = list.findIndex(s => s.id === student.id || (s.rollNo === student.rollNo && s.department === student.department && s.division === student.division));
-  if (idx >= 0) {
-    list[idx] = { ...list[idx], ...student };
-  } else {
-    list.unshift(student);
-  }
-  setLocalData(STORAGE_KEYS.STUDENTS, list);
-}
-
-function deleteStudentLocally(studentId) {
-  let list = getLocalData(STORAGE_KEYS.STUDENTS);
-  list = list.filter(s => s.id !== studentId && s.rollNo !== Number(studentId));
-  setLocalData(STORAGE_KEYS.STUDENTS, list);
-
-  let logs = getLocalData(STORAGE_KEYS.LOGS);
-  logs = logs.filter(l => l.studentId !== studentId && l.rollNo !== Number(studentId));
-  setLocalData(STORAGE_KEYS.LOGS, logs);
-}
-
-export function saveSessionLocally(session) {
-  if (!session || !session.id) return;
-  const list = getLocalData(STORAGE_KEYS.SESSIONS);
-  const idx = list.findIndex(s => s.id === session.id);
-  if (idx >= 0) {
-    list[idx] = { ...list[idx], ...session };
-  } else {
-    list.unshift(session);
-  }
-  setLocalData(STORAGE_KEYS.SESSIONS, list);
-}
-
-function saveLogLocally(log) {
-  if (!log) return;
-  const logs = getLocalData(STORAGE_KEYS.LOGS);
-  const idx = logs.findIndex(l => 
-    (l.studentId && log.studentId && l.studentId === log.studentId) || 
-    (l.rollNo === log.rollNo && l.department === log.department && l.division === log.division)
-  );
-
-  if (idx >= 0) {
-    logs[idx] = { ...logs[idx], ...log, timestamp: log.timestamp || logs[idx].timestamp };
-  } else {
-    logs.unshift({
-      id: log.id || `LOG_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
-      timestamp: log.timestamp || new Date().toISOString(),
-      ...log
-    });
-  }
-  setLocalData(STORAGE_KEYS.LOGS, logs.slice(0, 300));
 }
 
 async function request(endpoint, options = {}) {
@@ -188,15 +135,16 @@ export const api = {
   changeHodPassword: (data) => request('/api/admin/change-password', { method: 'POST', body: JSON.stringify(data) }),
   
   getLoginLogs: async (department) => {
+    // 1. Fetch latest live logs from Cloud Sync
+    await CloudSync.fetchGlobalState();
+
     let serverLogs = [];
     try {
       const res = await request(`/api/admin/logs${department ? `?department=${department}` : ''}`);
       if (res.success && Array.isArray(res.data)) {
         serverLogs = res.data;
       }
-    } catch (err) {
-      // serverless fallback
-    }
+    } catch (err) {}
 
     const localLogs = getLocalData(STORAGE_KEYS.LOGS).filter(l => !department || department === 'all' || l.department === department);
 
@@ -223,6 +171,9 @@ export const api = {
   },
 
   getConductedLectures: async (department) => {
+    // 1. Sync latest lectures from Cloud
+    await CloudSync.fetchGlobalState();
+
     let serverLogs = [];
     try {
       const res = await request(`/api/admin/logs${department ? `?department=${department}` : ''}`);
@@ -267,6 +218,7 @@ export const api = {
   },
 
   getAdminStats: async (department) => {
+    await CloudSync.fetchGlobalState();
     try {
       const res = await request(`/api/admin/stats${department ? `?department=${department}` : ''}`);
       const localStudents = getLocalData(STORAGE_KEYS.STUDENTS).filter(s => !department || department === 'all' || s.department === department);
@@ -296,6 +248,9 @@ export const api = {
   },
 
   getStudents: async (params = {}) => {
+    // 1. Fetch live global student roster from Cloud Sync across all phones & laptops
+    await CloudSync.fetchGlobalState();
+
     const query = new URLSearchParams(params).toString();
     try {
       const res = await request(`/api/admin/students${query ? `?${query}` : ''}`);
@@ -347,13 +302,13 @@ export const api = {
   addStudent: async (data) => {
     const res = await request('/api/admin/students', { method: 'POST', body: JSON.stringify(data) });
     if (res.success && res.data) {
-      saveStudentLocally(res.data);
+      CloudSync.saveStudent(res.data);
     }
     return res;
   },
 
   deleteStudent: async (studentId) => {
-    deleteStudentLocally(studentId);
+    CloudSync.deleteStudent(studentId);
     try {
       return await request(`/api/admin/students/${studentId}/delete`, { method: 'POST' });
     } catch (e) {
@@ -362,14 +317,7 @@ export const api = {
   },
 
   resetStudentDevice: async (studentId) => {
-    const list = getLocalData(STORAGE_KEYS.STUDENTS);
-    const target = list.find(s => s.id === studentId || s.rollNo === Number(studentId));
-    if (target) {
-      target.boundDeviceId = null;
-      target.boundFingerprint = null;
-      target.boundAt = null;
-      setLocalData(STORAGE_KEYS.STUDENTS, list);
-    }
+    CloudSync.resetDevice(studentId);
     return request(`/api/admin/students/${studentId}/reset-device`, { method: 'POST' });
   },
 
@@ -405,19 +353,19 @@ export const api = {
   startSession: async (data) => {
     const res = await request('/api/teacher/session/start', { method: 'POST', body: JSON.stringify(data) });
     if (res.success && res.session) {
-      saveSessionLocally(res.session);
+      CloudSync.saveSession(res.session);
     }
     return res;
   },
   extendSession: (sessionId, extraMinutes = 1) => request('/api/teacher/session/extend', { method: 'POST', body: JSON.stringify({ sessionId, extraMinutes }) }),
   endSession: async (sessionId, sessionData) => {
     if (sessionData) {
-      saveSessionLocally({ ...sessionData, status: 'closed', endTime: new Date().toISOString() });
+      CloudSync.saveSession({ ...sessionData, status: 'closed', endTime: new Date().toISOString() });
     }
     try {
       const res = await request('/api/teacher/session/end', { method: 'POST', body: JSON.stringify({ sessionId }) });
       if (res.success && res.session) {
-        saveSessionLocally(res.session);
+        CloudSync.saveSession(res.session);
       }
       return res;
     } catch (e) {
@@ -427,7 +375,7 @@ export const api = {
   manualMarkAttendance: (sessionId, rollNo) => request('/api/teacher/session/manual-mark', { method: 'POST', body: JSON.stringify({ sessionId, rollNo }) }),
   getSessionExcelUrl: (sessionId) => `${API_BASE}/api/teacher/session/${sessionId}/export`,
 
-  // Student (Resilient Fallback ensuring 500 error never blocks verification)
+  // Student (Real-time Cross-Device Synchronization)
   studentLogin: async (data) => {
     let studentData = null;
     try {
@@ -465,8 +413,9 @@ export const api = {
       };
     }
 
-    saveStudentLocally(studentData);
-    saveLogLocally({
+    // Immediately push new student registration to Global Cloud DB
+    await CloudSync.saveStudent(studentData);
+    await CloudSync.saveLog({
       type: 'NEW_STUDENT_REGISTRATION',
       studentId: studentData.id,
       studentName: studentData.name,
