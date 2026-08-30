@@ -51,8 +51,23 @@ export function TeacherPortal({ teacher, onBack }) {
     try {
       const res = await api.getConductedLectures(department);
       if (res.success && Array.isArray(res.data)) {
-        // Filter lectures for this department / faculty
-        setConductedLectures(res.data);
+        const myNameClean = (teacherName || teacher.name || '').trim().toLowerCase();
+        const myId = teacher.id;
+
+        // Strictly filter to lectures conducted ONLY by this faculty member
+        const myLecturesOnly = res.data.filter(l => {
+          if (!l) return false;
+          const lectTeacher = (l.teacherName || '').trim().toLowerCase();
+          const matchesId = l.teacherId && myId && l.teacherId === myId;
+          const matchesName = lectTeacher && myNameClean && (
+            lectTeacher === myNameClean ||
+            lectTeacher.includes(myNameClean) ||
+            myNameClean.includes(lectTeacher)
+          );
+          return matchesId || matchesName;
+        });
+
+        setConductedLectures(myLecturesOnly);
       }
     } catch (err) {
       console.warn('Teacher conducted lectures check:', err.message);
