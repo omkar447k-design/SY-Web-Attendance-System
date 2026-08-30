@@ -264,15 +264,6 @@ export function AdminPortal({ hodProfile, onLaunchLectureAsHod }) {
             <span className="whitespace-nowrap">Conduct Lecture</span>
           </button>
 
-          <a
-            href={api.getMasterExcelUrl(divisionFilter)}
-            download
-            className="flex items-center justify-center space-x-1.5 px-3.5 py-2 bg-white hover:bg-slate-50 text-slate-800 text-xs font-bold border border-slate-300 transition touch-target"
-          >
-            <Download className="w-3.5 h-3.5 flex-shrink-0" />
-            <span className="hidden xs:inline">Master Report</span>
-          </a>
-
           <button
             onClick={loadData}
             className="p-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 transition touch-target flex items-center justify-center flex-shrink-0"
