@@ -66,11 +66,20 @@ function deleteStudentLocally(studentId) {
 function saveLogLocally(log) {
   if (!log) return;
   const logs = getLocalData(STORAGE_KEYS.LOGS);
-  logs.unshift({
-    id: `LOG_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
-    timestamp: new Date().toISOString(),
-    ...log
-  });
+  const idx = logs.findIndex(l => 
+    (l.studentId && log.studentId && l.studentId === log.studentId) || 
+    (l.rollNo === log.rollNo && l.department === log.department && l.division === log.division)
+  );
+
+  if (idx >= 0) {
+    logs[idx] = { ...logs[idx], ...log, timestamp: log.timestamp || logs[idx].timestamp };
+  } else {
+    logs.unshift({
+      id: log.id || `LOG_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+      timestamp: log.timestamp || new Date().toISOString(),
+      ...log
+    });
+  }
   setLocalData(STORAGE_KEYS.LOGS, logs.slice(0, 300));
 }
 
@@ -109,24 +118,42 @@ export const api = {
   changeHodPassword: (data) => request('/api/admin/change-password', { method: 'POST', body: JSON.stringify(data) }),
   
   getLoginLogs: async (department) => {
+    let serverLogs = [];
     try {
       const res = await request(`/api/admin/logs${department ? `?department=${department}` : ''}`);
-      const serverLogs = res.data || [];
-      const localLogs = getLocalData(STORAGE_KEYS.LOGS).filter(l => !department || department === 'all' || l.department === department);
-      
-      // Merge unique by log id or studentId+timestamp
-      const combined = [...serverLogs];
-      localLogs.forEach(l => {
-        if (!combined.some(s => s.id === l.id || (s.studentId === l.studentId && s.timestamp === l.timestamp))) {
-          combined.push(l);
-        }
-      });
-      combined.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-      return { success: true, data: combined };
+      if (res.success && Array.isArray(res.data)) {
+        serverLogs = res.data;
+      }
     } catch (err) {
-      const localLogs = getLocalData(STORAGE_KEYS.LOGS).filter(l => !department || department === 'all' || l.department === department);
-      return { success: true, data: localLogs };
+      // serverless fallback
     }
+
+    const localLogs = getLocalData(STORAGE_KEYS.LOGS).filter(l => !department || department === 'all' || l.department === department);
+
+    // STRICT 1-ENTRY DEDUPLICATION PER STUDENT (eliminates duplicates & blinking)
+    const uniqueLogMap = new Map();
+
+    // 1. Process server logs first
+    serverLogs.forEach(l => {
+      const key = `${l.department || 'entc'}_${l.division || 'SY-A'}_${l.rollNo || l.studentId}`;
+      uniqueLogMap.set(key, l);
+    });
+
+    // 2. Merge local logs
+    localLogs.forEach(l => {
+      const key = `${l.department || 'entc'}_${l.division || 'SY-A'}_${l.rollNo || l.studentId}`;
+      if (!uniqueLogMap.has(key)) {
+        uniqueLogMap.set(key, l);
+      } else {
+        uniqueLogMap.set(key, { ...uniqueLogMap.get(key), ...l });
+      }
+    });
+
+    const combined = Array.from(uniqueLogMap.values());
+    combined.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+    setLocalData(STORAGE_KEYS.LOGS, combined);
+
+    return { success: true, data: combined };
   },
 
   getAdminStats: async (department) => {
@@ -171,8 +198,9 @@ export const api = {
         combinedMap.set(`${s.department || 'entc'}_${s.division || 'SY-A'}_${s.rollNo}`, s);
       });
       serverStudents.forEach(s => {
-        combinedMap.set(`${s.department || 'entc'}_${s.division || 'SY-A'}_${s.rollNo}`, {
-          ...(combinedMap.get(`${s.department || 'entc'}_${s.division || 'SY-A'}_${s.rollNo}`) || {}),
+        const key = `${s.department || 'entc'}_${s.division || 'SY-A'}_${s.rollNo}`;
+        combinedMap.set(key, {
+          ...(combinedMap.get(key) || {}),
           ...s
         });
       });
@@ -186,7 +214,7 @@ export const api = {
       }
       if (params.search) {
         const q = params.search.toLowerCase();
-        combinedList = combinedList.filter(s => s.name?.toLowerCase().includes(q) || String(s.rollNo).includes(q) || s.prn?.includes(q));
+        combinedList = combinedList.filter(s => s.name?.toLowerCase().includes(q) || String(s.rollNo).includes(q) || s.prn?.toLowerCase().includes(q));
       }
 
       setLocalData(STORAGE_KEYS.STUDENTS, Array.from(combinedMap.values()));
@@ -201,7 +229,7 @@ export const api = {
       }
       if (params.search) {
         const q = params.search.toLowerCase();
-        localStudents = localStudents.filter(s => s.name?.toLowerCase().includes(q) || String(s.rollNo).includes(q) || s.prn?.includes(q));
+        localStudents = localStudents.filter(s => s.name?.toLowerCase().includes(q) || String(s.rollNo).includes(q) || s.prn?.toLowerCase().includes(q));
       }
       return { success: true, data: localStudents };
     }

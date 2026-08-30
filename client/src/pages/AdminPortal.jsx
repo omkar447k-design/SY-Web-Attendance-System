@@ -206,7 +206,17 @@ export function AdminPortal({ hodProfile, onLaunchLectureAsHod }) {
 
   const defaulters = students.filter(s => s.isDefaulter);
 
-  const studentLogs = loginLogs.filter(l => l.type === 'NEW_STUDENT_REGISTRATION' || l.type === 'STUDENT_LOGIN');
+  // Deduplicate strictly 1 permanent entry per student
+  const studentLogsMap = new Map();
+  loginLogs.forEach(l => {
+    if (l.type === 'NEW_STUDENT_REGISTRATION' || l.type === 'STUDENT_LOGIN') {
+      const key = `${l.department || currentDept}_${l.division || 'SY-A'}_${l.rollNo || l.studentId}`;
+      if (!studentLogsMap.has(key)) {
+        studentLogsMap.set(key, l);
+      }
+    }
+  });
+  const studentLogs = Array.from(studentLogsMap.values());
   const facultyLogs = loginLogs.filter(l => l.type === 'FACULTY_LECTURE_START' || l.type === 'FACULTY_LECTURE_END');
   const currentDeptObj = DEPARTMENTS.find(d => d.id === currentDept);
 
@@ -420,9 +430,9 @@ export function AdminPortal({ hodProfile, onLaunchLectureAsHod }) {
               </h3>
               <p className="text-[11px] xs:text-xs text-slate-500 mt-0.5 truncate">Real-time log of verified ID cards in {currentDeptObj?.name}</p>
             </div>
-            <span className="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 text-[10px] xs:text-xs font-bold border border-emerald-200 flex items-center space-x-1 flex-shrink-0">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
-              <span>Live Feed</span>
+            <span className="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 text-[10px] xs:text-xs font-bold border border-emerald-200 flex items-center space-x-1.5 flex-shrink-0">
+              <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+              <span>● Permanent Feed</span>
             </span>
           </div>
 
