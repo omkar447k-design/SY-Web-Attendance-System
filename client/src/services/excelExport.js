@@ -42,12 +42,15 @@ export function exportLectureExcelFile(session) {
 
   const attendees = session.attendees || [];
   const registeredStudents = getRegisteredRoster();
+  const sessionDivs = session.divisions || (session.division ? session.division.split(',').map(d => d.trim()) : ['SY-A']);
 
-  // Create fast lookup maps
+  // Create fast lookup maps with strict Division & Department segregation
   const attendeeMap = new Map();
   attendees.forEach(att => {
     const roll = Number(att.rollNo);
-    if (!isNaN(roll)) {
+    const matchesDiv = !att.division || sessionDivs.includes(att.division);
+    const matchesDept = !att.department || !session.department || att.department === session.department;
+    if (!isNaN(roll) && matchesDiv && matchesDept) {
       attendeeMap.set(roll, att);
     }
   });
@@ -55,7 +58,9 @@ export function exportLectureExcelFile(session) {
   const rosterMap = new Map();
   registeredStudents.forEach(st => {
     const roll = Number(st.rollNo);
-    if (!isNaN(roll) && (!session.department || st.department === session.department)) {
+    const matchesDiv = !st.division || sessionDivs.includes(st.division);
+    const matchesDept = !st.department || !session.department || st.department === session.department;
+    if (!isNaN(roll) && matchesDiv && matchesDept) {
       rosterMap.set(roll, st);
     }
   });

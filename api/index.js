@@ -474,15 +474,15 @@ app.post('/api/teacher/session/end', (req, res) => {
   }
 });
 
-// 16. STUDENT: ACTIVE SESSION QUERY
+// 16. STUDENT: ACTIVE SESSION QUERY (Strict Division Boundary)
 app.get('/api/student/session/active', (req, res) => {
   try {
     const { division = 'SY-A', department = 'entc', studentId } = req.query;
     const active = db.sessions.find(s => {
       if (s.status !== 'active') return false;
       if (s.department && s.department !== department) return false;
-      const sessionDivs = s.divisions || [s.division];
-      return sessionDivs.includes(division) || s.division.includes(division);
+      const sessionDivs = s.divisions || (s.division ? s.division.split(',').map(d => d.trim()) : ['SY-A']);
+      return sessionDivs.includes(division);
     });
 
     if (!active) {
@@ -497,7 +497,7 @@ app.get('/api/student/session/active', (req, res) => {
     }
 
     const remainingSec = Math.max(0, Math.ceil((endTime.getTime() - now.getTime()) / 1000));
-    const alreadyMarked = (active.attendees || []).some(a => a.studentId === studentId);
+    const alreadyMarked = (active.attendees || []).some(a => a.studentId === studentId || (a.rollNo === Number(req.query.rollNo) && a.division === division));
 
     res.json({
       success: true,
@@ -518,27 +518,40 @@ app.get('/api/student/session/active', (req, res) => {
   }
 });
 
-// 17. STUDENT: SUBMIT PIN
+// 17. STUDENT: SUBMIT PIN (Strict Division Boundary)
 app.post('/api/student/attendance/submit', (req, res) => {
   try {
-    const { sessionId, studentId, rollNo, studentName, prn, division, department, batch, enteredPin } = req.body || {};
+    const { sessionId, studentId, rollNo, studentName, prn, division = 'SY-A', department = 'entc', batch, enteredPin } = req.body || {};
     const session = db.sessions.find(s => s.id === sessionId);
 
-    // Look up student from registered db if name/prn is missing
-    const registeredStudent = db.students.find(s => s.id === studentId || s.rollNo === Number(rollNo));
+    if (session) {
+      const sessionDivs = session.divisions || (session.division ? session.division.split(',').map(d => d.trim()) : ['SY-A']);
+      if (!sessionDivs.includes(division)) {
+        return res.status(403).json({
+          success: false,
+          error: `Access Denied: This session is strictly for Division ${sessionDivs.join(', ')}. You are registered in ${division}.`
+        });
+      }
+    }
+
+    // Look up student from registered db with strict Division & Department match
+    const registeredStudent = db.students.find(s => 
+      s.id === studentId || 
+      (s.rollNo === Number(rollNo) && s.division === division && (s.department === department || !s.department))
+    );
 
     const finalName = studentName && studentName !== 'Student' 
       ? studentName 
-      : (registeredStudent?.name || (Number(rollNo) === 22 ? 'Kadam Omkar Sunil' : 'Verified Student'));
+      : (registeredStudent?.name || (Number(rollNo) === 22 && division === 'SY-A' ? 'Kadam Omkar Sunil' : 'Verified Student'));
 
     const finalPrn = prn && prn !== '-'
       ? prn
-      : (registeredStudent?.prn || (Number(rollNo) === 22 ? '12251ET049' : `12251ET${String(rollNo).padStart(3, '0')}`));
+      : (registeredStudent?.prn || (Number(rollNo) === 22 && division === 'SY-A' ? '12251ET049' : `12251ET${String(rollNo).padStart(3, '0')}`));
 
     const record = {
-      id: `ATT_${sessionId}_${rollNo}`,
+      id: `ATT_${sessionId}_${department}_${division}_${rollNo}`,
       sessionId,
-      studentId: studentId || `S_${rollNo}`,
+      studentId: studentId || `S_${department}_${division}_${rollNo}`,
       rollNo: Number(rollNo),
       studentName: finalName,
       prn: finalPrn,
@@ -551,7 +564,7 @@ app.post('/api/student/attendance/submit', (req, res) => {
 
     if (session) {
       if (!session.attendees) session.attendees = [];
-      const existsIdx = session.attendees.findIndex(a => Number(a.rollNo) === Number(rollNo));
+      const existsIdx = session.attendees.findIndex(a => Number(a.rollNo) === Number(rollNo) && a.division === division);
       if (existsIdx >= 0) {
         session.attendees[existsIdx] = record;
       } else {
