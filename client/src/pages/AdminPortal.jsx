@@ -14,7 +14,7 @@ const DEPARTMENTS = [
 const DIVISIONS = ['SY-A', 'SY-B', 'SY-C'];
 
 export function AdminPortal({ hodProfile, onLaunchLectureAsHod }) {
-  const [activeTab, setActiveTab] = useState('overview');
+  const [activeTab, setActiveTab] = useState('roster'); // Default directly to Student Roster for quick access
   const [stats, setStats] = useState(null);
   const [students, setStudents] = useState([]);
   const [teachers, setTeachers] = useState([]);
@@ -52,7 +52,6 @@ export function AdminPortal({ hodProfile, onLaunchLectureAsHod }) {
   const [passError, setPassError] = useState('');
 
   const loadData = async () => {
-    setLoading(true);
     try {
       const [statsRes, studRes, teachRes, setRes, logsRes] = await Promise.all([
         api.getAdminStats(currentDept),
@@ -63,14 +62,14 @@ export function AdminPortal({ hodProfile, onLaunchLectureAsHod }) {
       ]);
 
       if (statsRes.success) setStats(statsRes.data);
-      if (studRes.success) setStudents(studRes.data);
+      if (studRes.success) setStudents(studRes.data || []);
       if (teachRes.success) {
         setTeachers(teachRes.data.filter(t => t.department === currentDept));
       }
       if (setRes.success) setSettings(setRes.data);
       if (logsRes.success) setLoginLogs(logsRes.data || []);
     } catch (err) {
-      console.error('Error loading admin data:', err);
+      console.warn('Admin portal data refresh:', err.message);
     } finally {
       setLoading(false);
     }
@@ -78,19 +77,20 @@ export function AdminPortal({ hodProfile, onLaunchLectureAsHod }) {
 
   useEffect(() => {
     loadData();
-    const interval = setInterval(loadData, 5000);
+    const interval = setInterval(loadData, 4000);
     return () => clearInterval(interval);
   }, [divisionFilter, currentDept]);
 
   const handleDeleteStudent = async (studentId, studentName, rollNo) => {
-    if (!window.confirm(`⚠️ EXPEL STUDENT: Are you sure you want to permanently remove Roll No. ${rollNo} (${studentName}) from the database?`)) {
+    if (!window.confirm(`⚠️ EXPEL STUDENT: Are you sure you want to permanently remove Roll No. ${rollNo} (${studentName}) from the database? This action is permanent.`)) {
       return;
     }
 
     try {
       const res = await api.deleteStudent(studentId);
       if (res.success) {
-        alert(res.message);
+        setStudents(prev => prev.filter(s => s.id !== studentId && s.rollNo !== Number(rollNo)));
+        setLoginLogs(prev => prev.filter(l => l.studentId !== studentId && l.rollNo !== Number(rollNo)));
         loadData();
       }
     } catch (err) {
@@ -103,7 +103,7 @@ export function AdminPortal({ hodProfile, onLaunchLectureAsHod }) {
     try {
       const res = await api.resetStudentDevice(studentId);
       if (res.success) {
-        alert(res.message);
+        alert(res.message || 'Device lock reset successfully.');
         loadData();
       }
     } catch (err) {
@@ -201,7 +201,7 @@ export function AdminPortal({ hodProfile, onLaunchLectureAsHod }) {
 
   const filteredStudents = students.filter(s => {
     const q = searchQuery.toLowerCase();
-    return s.name.toLowerCase().includes(q) || String(s.rollNo).includes(q) || s.prn?.includes(q);
+    return (s.name?.toLowerCase().includes(q) || String(s.rollNo).includes(q) || s.prn?.toLowerCase().includes(q));
   });
 
   const defaulters = students.filter(s => s.isDefaulter);
@@ -213,12 +213,12 @@ export function AdminPortal({ hodProfile, onLaunchLectureAsHod }) {
   return (
     <div className="max-w-7xl mx-auto px-3 xs:px-4 sm:px-6 lg:px-8 py-4 xs:py-6 sm:py-8 space-y-4 sm:space-y-6">
       
-      {/* Header Bar */}
+      {/* Header Bar (White & Sky-Bluish Grey) */}
       <div className="bg-white border border-slate-200 rounded-2xl sm:rounded-3xl p-4 xs:p-5 sm:p-6 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3.5 sm:gap-4">
         <div className="min-w-0">
           <div className="flex items-center space-x-2">
             <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse flex-shrink-0"></span>
-            <span className="text-[10px] xs:text-xs font-bold uppercase tracking-wider text-indigo-600 truncate">
+            <span className="text-[10px] xs:text-xs font-bold uppercase tracking-wider text-sky-600 truncate">
               Department Portal • {currentDeptObj?.code || currentDept.toUpperCase()}
             </span>
           </div>
@@ -233,7 +233,7 @@ export function AdminPortal({ hodProfile, onLaunchLectureAsHod }) {
         <div className="flex items-center space-x-2 w-full sm:w-auto justify-between sm:justify-end flex-wrap gap-2">
           <button
             onClick={() => setShowHodLectureModal(true)}
-            className="flex-1 sm:flex-none flex items-center justify-center space-x-1.5 px-3.5 py-2 sm:py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md shadow-indigo-100 transition active:scale-95 touch-target"
+            className="flex-1 sm:flex-none flex items-center justify-center space-x-1.5 px-3.5 py-2 sm:py-2.5 rounded-xl bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold shadow-md shadow-sky-100 transition active:scale-95 touch-target"
           >
             <Play className="w-4 h-4 flex-shrink-0" />
             <span className="whitespace-nowrap">Conduct Lecture</span>
@@ -258,23 +258,23 @@ export function AdminPortal({ hodProfile, onLaunchLectureAsHod }) {
         </div>
       </div>
 
-      {/* Navigation Tabs - Horizontal Scroll on Mobile */}
+      {/* Navigation Tabs - White & Sky-Bluish Grey Theme */}
       <div className="border-b border-slate-200 pb-2 overflow-x-auto scrollbar-none -mx-3 px-3 sm:mx-0 sm:px-0">
         <div className="flex space-x-1.5 sm:space-x-2 min-w-max">
           {[
-            { id: 'overview', label: '📊 Overview', icon: Shield },
+            { id: 'roster', label: `👥 Student Roster (${filteredStudents.length})`, icon: Users },
             { id: 'audit', label: `🔔 Live Logins (${studentLogs.length})`, icon: Bell },
             { id: 'faculty', label: `👨‍🏫 Faculty (${teachers.length})`, icon: UserCheck },
-            { id: 'roster', label: `👥 Student Roster (${filteredStudents.length})`, icon: Users },
+            { id: 'overview', label: '📊 Department Overview', icon: Shield },
             { id: 'defaulters', label: `⚠️ Defaulters (${defaulters.length})`, icon: AlertTriangle },
             { id: 'settings', label: '⚙️ Security', icon: Settings }
           ].map(tab => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold transition flex items-center space-x-1.5 whitespace-nowrap touch-target ${
+              className={`px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold transition flex items-center space-x-1.5 whitespace-nowrap touch-target ${
                 activeTab === tab.id
-                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-100'
+                  ? 'bg-sky-600 text-white shadow-md shadow-sky-100'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100 bg-white sm:bg-transparent border sm:border-0 border-slate-200'
               }`}
             >
@@ -284,33 +284,127 @@ export function AdminPortal({ hodProfile, onLaunchLectureAsHod }) {
         </div>
       </div>
 
-      {/* TAB 1: OVERVIEW */}
-      {activeTab === 'overview' && (
-        <div className="space-y-4 sm:space-y-6">
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
-            <div className="bg-white border border-slate-200 rounded-xl sm:rounded-2xl p-4 sm:p-5 shadow-sm">
-              <span className="text-[10px] xs:text-xs font-bold text-slate-500 uppercase truncate block">{currentDeptObj?.code} Students</span>
-              <div className="text-2xl sm:text-3xl font-black text-slate-900 mt-1">{stats?.totalStudents || 0}</div>
-              <p className="text-[10px] xs:text-[11px] text-slate-400 mt-0.5 sm:mt-1 font-medium truncate">1-Phone bound</p>
+      {/* TAB 1: VERIFIED STUDENT ROSTER (PERMANENT & REACTIVE) */}
+      {activeTab === 'roster' && (
+        <div className="bg-white border border-slate-200 rounded-2xl sm:rounded-3xl p-4 xs:p-5 sm:p-6 shadow-sm space-y-3.5 sm:space-y-4">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 sm:gap-3 pb-3 border-b border-slate-200">
+            <div className="flex items-center space-x-2 sm:space-x-3 flex-1">
+              <select
+                value={divisionFilter}
+                onChange={(e) => setDivisionFilter(e.target.value)}
+                className="bg-slate-50 border border-slate-300 rounded-xl px-2.5 sm:px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:border-sky-500 min-h-[40px]"
+              >
+                <option value="SY-A">SY-A</option>
+                <option value="SY-B">SY-B</option>
+                <option value="SY-C">SY-C</option>
+              </select>
+
+              <div className="relative flex-1">
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-3" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search student name, roll number, or PRN..."
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl pl-8 pr-3 py-2 text-base sm:text-xs text-slate-800 placeholder-slate-400 outline-none focus:border-sky-500 min-h-[40px]"
+                />
+              </div>
             </div>
 
-            <div className="bg-white border border-slate-200 rounded-xl sm:rounded-2xl p-4 sm:p-5 shadow-sm">
-              <span className="text-[10px] xs:text-xs font-bold text-slate-500 uppercase truncate block">Faculty Count</span>
-              <div className="text-2xl sm:text-3xl font-black text-slate-900 mt-1">{teachers.length}</div>
-              <p className="text-[10px] xs:text-[11px] text-slate-400 mt-0.5 sm:mt-1 font-medium truncate">Password protected</p>
-            </div>
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="flex items-center justify-center space-x-1.5 px-3.5 py-2 sm:py-2.5 rounded-xl bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold shadow-md shadow-sky-100 transition touch-target"
+            >
+              <UserPlus className="w-3.5 h-3.5" />
+              <span>Add Student</span>
+            </button>
+          </div>
 
-            <div className="bg-white border border-slate-200 rounded-xl sm:rounded-2xl p-4 sm:p-5 shadow-sm">
-              <span className="text-[10px] xs:text-xs font-bold text-indigo-600 uppercase truncate block">Lectures Conducted</span>
-              <div className="text-2xl sm:text-3xl font-black text-indigo-600 mt-1">{facultyLogs.length}</div>
-              <p className="text-[10px] xs:text-[11px] text-slate-400 mt-0.5 sm:mt-1 font-medium truncate">Sessions logged</p>
-            </div>
-
-            <div className="bg-white border border-slate-200 rounded-xl sm:rounded-2xl p-4 sm:p-5 shadow-sm">
-              <span className="text-[10px] xs:text-xs font-bold text-amber-600 uppercase truncate block">Defaulter Students</span>
-              <div className="text-2xl sm:text-3xl font-black text-amber-600 mt-1">{defaulters.length}</div>
-              <p className="text-[10px] xs:text-[11px] text-slate-400 mt-0.5 sm:mt-1 font-medium truncate">&lt; 75% threshold</p>
-            </div>
+          <div className="overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0 max-h-[520px] overflow-y-auto">
+            {filteredStudents.length === 0 ? (
+              <div className="p-8 text-center text-slate-400 text-xs font-medium space-y-1">
+                <p className="font-bold text-slate-600 text-sm">No student records found in {divisionFilter}.</p>
+                <p>When students verify with their physical ID card on the login page, their profile appears here permanently.</p>
+              </div>
+            ) : (
+              <table className="w-full text-left text-xs sm:text-sm min-w-[580px]">
+                <thead className="text-slate-500 uppercase bg-slate-50 sticky top-0 border-b border-slate-200 text-[10px] xs:text-xs">
+                  <tr>
+                    <th className="py-2.5 px-2.5">Roll</th>
+                    <th className="py-2.5 px-2.5">PRN</th>
+                    <th className="py-2.5 px-2.5">Student Name</th>
+                    <th className="py-2.5 px-2.5">ID Card</th>
+                    <th className="py-2.5 px-2.5">Attendance</th>
+                    <th className="py-2.5 px-2.5">1-Phone Lock</th>
+                    <th className="py-2.5 px-2.5 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-slate-700">
+                  {filteredStudents.map(student => (
+                    <tr key={student.id} className="hover:bg-slate-50 transition">
+                      <td className="py-2.5 px-2.5 font-extrabold text-slate-900">#{student.rollNo}</td>
+                      <td className="py-2.5 px-2.5 text-slate-500 font-mono text-xs">{student.prn}</td>
+                      <td className="py-2.5 px-2.5 font-bold text-slate-900">{student.name}</td>
+                      <td className="py-2.5 px-2.5">
+                        {student.idCardPhoto ? (
+                          <button
+                            onClick={() => {
+                              setSelectedPhoto(student.idCardPhoto);
+                              setSelectedStudentName(student.name);
+                            }}
+                            className="flex items-center space-x-1 text-xs text-sky-600 hover:text-sky-800 font-bold touch-target"
+                            title="View ID Card"
+                          >
+                            <img src={student.idCardPhoto} alt="ID" className="w-6 h-6 rounded-md object-cover border border-slate-300 shadow-sm" />
+                            <span>View</span>
+                          </button>
+                        ) : (
+                          <span className="text-slate-400 text-xs">Pending</span>
+                        )}
+                      </td>
+                      <td className="py-2.5 px-2.5 font-bold">
+                        <span className={student.isDefaulter ? 'text-rose-600' : 'text-emerald-600'}>
+                          {student.attendancePercentage || 100}%
+                        </span>
+                      </td>
+                      <td className="py-2.5 px-2.5">
+                        {student.boundDeviceId ? (
+                          <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-bold text-[10px] border border-emerald-200">
+                            🔒 Bound
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 font-semibold text-[10px]">
+                            Unbound
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-2.5 px-2.5 text-right">
+                        <div className="flex items-center justify-end space-x-1">
+                          {student.boundDeviceId && (
+                            <button
+                              onClick={() => handleResetDevice(student.id, student.name)}
+                              className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 text-[10px] xs:text-[11px] font-bold transition touch-target"
+                              title="Reset Phone Lock"
+                            >
+                              <Unlock className="w-3 h-3 inline mr-0.5" />
+                              Reset
+                            </button>
+                          )}
+                          <button
+                            onClick={() => handleDeleteStudent(student.id, student.name, student.rollNo)}
+                            className="px-2 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 text-[10px] xs:text-[11px] font-bold transition flex items-center space-x-0.5 touch-target"
+                            title="Expel / Permanently Delete Student"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                            <span>Delete</span>
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
         </div>
       )}
@@ -321,7 +415,7 @@ export function AdminPortal({ hodProfile, onLaunchLectureAsHod }) {
           <div className="flex flex-col xs:flex-row items-start xs:items-center justify-between gap-2 pb-3 border-b border-slate-200">
             <div className="min-w-0">
               <h3 className="text-sm xs:text-base font-extrabold text-slate-900 flex items-center space-x-2 truncate">
-                <Bell className="w-4 h-4 sm:w-5 sm:h-5 text-indigo-600 flex-shrink-0" />
+                <Bell className="w-4 h-4 sm:w-5 sm:h-5 text-sky-600 flex-shrink-0" />
                 <span className="truncate">Live Registration & ID Audit Feed</span>
               </h3>
               <p className="text-[11px] xs:text-xs text-slate-500 mt-0.5 truncate">Real-time log of verified ID cards in {currentDeptObj?.name}</p>
@@ -356,7 +450,7 @@ export function AdminPortal({ hodProfile, onLaunchLectureAsHod }) {
                         title="Click to view full ID Card"
                       />
                     ) : (
-                      <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-xl bg-indigo-50 text-indigo-600 font-extrabold text-xs flex items-center justify-center border border-indigo-100 flex-shrink-0">
+                      <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-xl bg-sky-50 text-sky-600 font-extrabold text-xs flex items-center justify-center border border-sky-100 flex-shrink-0">
                         #{log.rollNo}
                       </div>
                     )}
@@ -364,7 +458,7 @@ export function AdminPortal({ hodProfile, onLaunchLectureAsHod }) {
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center space-x-1.5 flex-wrap">
                         <span className="font-extrabold text-slate-900 text-xs sm:text-sm truncate">{log.studentName}</span>
-                        <span className="text-[9px] xs:text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-100 flex-shrink-0">
+                        <span className="text-[9px] xs:text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-sky-50 text-sky-700 border border-sky-100 flex-shrink-0">
                           #{log.rollNo} • {log.division}
                         </span>
                       </div>
@@ -388,7 +482,7 @@ export function AdminPortal({ hodProfile, onLaunchLectureAsHod }) {
                     <button
                       onClick={() => handleDeleteStudent(log.studentId, log.studentName, log.rollNo)}
                       className="px-2.5 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-[11px] xs:text-xs font-bold transition flex items-center space-x-1 touch-target flex-shrink-0"
-                      title="Expel / Delete Fake Student Account"
+                      title="Expel / Permanently Delete Student"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                       <span>Expel</span>
@@ -401,14 +495,14 @@ export function AdminPortal({ hodProfile, onLaunchLectureAsHod }) {
         </div>
       )}
 
-      {/* TAB 3: FACULTY ROSTER & LECTURE LOGS */}
+      {/* TAB 3: FACULTY ROSTER */}
       {activeTab === 'faculty' && (
         <div className="space-y-4 sm:space-y-6">
           <div className="bg-white border border-slate-200 rounded-2xl sm:rounded-3xl p-4 xs:p-5 sm:p-6 shadow-sm">
             <div className="flex items-center justify-between pb-3 mb-3.5 border-b border-slate-100">
               <div className="min-w-0">
                 <h3 className="text-sm xs:text-base font-extrabold text-slate-900 flex items-center space-x-2 truncate">
-                  <UserCheck className="w-4 h-4 sm:w-5 sm:h-5 text-indigo-600 flex-shrink-0" />
+                  <UserCheck className="w-4 h-4 sm:w-5 sm:h-5 text-sky-600 flex-shrink-0" />
                   <span className="truncate">{currentDeptObj?.code} Faculty Roster</span>
                 </h3>
                 <p className="text-[11px] xs:text-xs text-slate-500 truncate">Teachers registered under this department</p>
@@ -424,7 +518,7 @@ export function AdminPortal({ hodProfile, onLaunchLectureAsHod }) {
                 teachers.map(t => (
                   <div key={t.id} className="p-3.5 sm:p-4 rounded-xl sm:rounded-2xl bg-slate-50 border border-slate-200 flex flex-col justify-between">
                     <div>
-                      <span className="text-[9px] xs:text-[10px] uppercase font-bold text-indigo-600">{t.role || 'Teacher'}</span>
+                      <span className="text-[9px] xs:text-[10px] uppercase font-bold text-sky-600">{t.role || 'Teacher'}</span>
                       <h4 className="font-bold text-slate-900 text-xs sm:text-sm mt-0.5 truncate">{t.name}</h4>
                       {t.subjectName && (
                         <p className="text-xs text-slate-700 font-semibold mt-1 truncate">📚 {t.subjectName}</p>
@@ -459,7 +553,7 @@ export function AdminPortal({ hodProfile, onLaunchLectureAsHod }) {
                     <div className="min-w-0">
                       <div className="flex items-center space-x-1.5 flex-wrap">
                         <span className="font-extrabold text-slate-900 text-xs sm:text-sm truncate">👨‍🏫 {log.teacherName}</span>
-                        <span className="text-[9px] xs:text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-100 flex-shrink-0">
+                        <span className="text-[9px] xs:text-[10px] font-bold px-2 py-0.5 rounded-full bg-sky-50 text-sky-700 border border-sky-100 flex-shrink-0">
                           {log.subjectName}
                         </span>
                       </div>
@@ -488,120 +582,33 @@ export function AdminPortal({ hodProfile, onLaunchLectureAsHod }) {
         </div>
       )}
 
-      {/* TAB 4: VERIFIED STUDENT ROSTER */}
-      {activeTab === 'roster' && (
-        <div className="bg-white border border-slate-200 rounded-2xl sm:rounded-3xl p-4 xs:p-5 sm:p-6 shadow-sm space-y-3.5 sm:space-y-4">
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 sm:gap-3 pb-3 border-b border-slate-200">
-            <div className="flex items-center space-x-2 sm:space-x-3 flex-1">
-              <select
-                value={divisionFilter}
-                onChange={(e) => setDivisionFilter(e.target.value)}
-                className="bg-slate-50 border border-slate-300 rounded-xl px-2.5 sm:px-3 py-2 text-xs font-bold text-slate-800 outline-none min-h-[40px]"
-              >
-                <option value="SY-A">SY-A</option>
-                <option value="SY-B">SY-B</option>
-                <option value="SY-C">SY-C</option>
-              </select>
-
-              <div className="relative flex-1">
-                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-3" />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search name/roll/PRN..."
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl pl-8 pr-3 py-2 text-base sm:text-xs text-slate-800 placeholder-slate-400 outline-none focus:border-indigo-600 min-h-[40px]"
-                />
-              </div>
+      {/* TAB 4: OVERVIEW STATS */}
+      {activeTab === 'overview' && (
+        <div className="space-y-4 sm:space-y-6">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
+            <div className="bg-white border border-slate-200 rounded-xl sm:rounded-2xl p-4 sm:p-5 shadow-sm">
+              <span className="text-[10px] xs:text-xs font-bold text-slate-500 uppercase truncate block">{currentDeptObj?.code} Total Students</span>
+              <div className="text-2xl sm:text-3xl font-black text-slate-900 mt-1">{stats?.totalStudents || students.length || 0}</div>
+              <p className="text-[10px] xs:text-[11px] text-slate-400 mt-0.5 sm:mt-1 font-medium truncate">Permanent roster</p>
             </div>
 
-            <button
-              onClick={() => setShowAddModal(true)}
-              className="flex items-center justify-center space-x-1.5 px-3.5 py-2 sm:py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md shadow-indigo-100 transition touch-target"
-            >
-              <UserPlus className="w-3.5 h-3.5" />
-              <span>Add Student</span>
-            </button>
-          </div>
+            <div className="bg-white border border-slate-200 rounded-xl sm:rounded-2xl p-4 sm:p-5 shadow-sm">
+              <span className="text-[10px] xs:text-xs font-bold text-slate-500 uppercase truncate block">Faculty Count</span>
+              <div className="text-2xl sm:text-3xl font-black text-slate-900 mt-1">{teachers.length}</div>
+              <p className="text-[10px] xs:text-[11px] text-slate-400 mt-0.5 sm:mt-1 font-medium truncate">Password protected</p>
+            </div>
 
-          <div className="overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0 max-h-[500px] overflow-y-auto">
-            <table className="w-full text-left text-xs sm:text-sm min-w-[580px]">
-              <thead className="text-slate-500 uppercase bg-slate-50 sticky top-0 border-b border-slate-200 text-[10px] xs:text-xs">
-                <tr>
-                  <th className="py-2.5 px-2.5">Roll</th>
-                  <th className="py-2.5 px-2.5">PRN</th>
-                  <th className="py-2.5 px-2.5">Student Name</th>
-                  <th className="py-2.5 px-2.5">ID Card</th>
-                  <th className="py-2.5 px-2.5">Attendance</th>
-                  <th className="py-2.5 px-2.5">1-Phone</th>
-                  <th className="py-2.5 px-2.5 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 text-slate-700">
-                {filteredStudents.map(student => (
-                  <tr key={student.id} className="hover:bg-slate-50 transition">
-                    <td className="py-2.5 px-2.5 font-extrabold text-slate-900">#{student.rollNo}</td>
-                    <td className="py-2.5 px-2.5 text-slate-500 font-mono text-xs">{student.prn}</td>
-                    <td className="py-2.5 px-2.5 font-bold text-slate-900">{student.name}</td>
-                    <td className="py-2.5 px-2.5">
-                      {student.idCardPhoto ? (
-                        <button
-                          onClick={() => {
-                            setSelectedPhoto(student.idCardPhoto);
-                            setSelectedStudentName(student.name);
-                          }}
-                          className="flex items-center space-x-1 text-xs text-indigo-600 hover:text-indigo-800 font-bold touch-target"
-                          title="View ID Card"
-                        >
-                          <img src={student.idCardPhoto} alt="ID" className="w-6 h-6 rounded-md object-cover border border-slate-300 shadow-sm" />
-                          <span>View</span>
-                        </button>
-                      ) : (
-                        <span className="text-slate-400 text-xs">Pending</span>
-                      )}
-                    </td>
-                    <td className="py-2.5 px-2.5 font-bold">
-                      <span className={student.isDefaulter ? 'text-rose-600' : 'text-emerald-600'}>
-                        {student.attendancePercentage}%
-                      </span>
-                    </td>
-                    <td className="py-2.5 px-2.5">
-                      {student.boundDeviceId ? (
-                        <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-bold text-[10px] border border-emerald-200">
-                          🔒 Bound
-                        </span>
-                      ) : (
-                        <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 font-semibold text-[10px]">
-                          Unbound
-                        </span>
-                      )}
-                    </td>
-                    <td className="py-2.5 px-2.5 text-right">
-                      <div className="flex items-center justify-end space-x-1">
-                        {student.boundDeviceId && (
-                          <button
-                            onClick={() => handleResetDevice(student.id, student.name)}
-                            className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 text-[10px] xs:text-[11px] font-bold transition touch-target"
-                            title="Reset Phone Lock"
-                          >
-                            <Unlock className="w-3 h-3 inline mr-0.5" />
-                            Reset
-                          </button>
-                        )}
-                        <button
-                          onClick={() => handleDeleteStudent(student.id, student.name, student.rollNo)}
-                          className="px-2 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 text-[10px] xs:text-[11px] font-bold transition flex items-center space-x-0.5 touch-target"
-                          title="Expel / Delete Suspicious Account"
-                        >
-                          <Trash2 className="w-3 h-3" />
-                          <span>Delete</span>
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <div className="bg-white border border-slate-200 rounded-xl sm:rounded-2xl p-4 sm:p-5 shadow-sm">
+              <span className="text-[10px] xs:text-xs font-bold text-sky-600 uppercase truncate block">Lectures Conducted</span>
+              <div className="text-2xl sm:text-3xl font-black text-sky-600 mt-1">{facultyLogs.length}</div>
+              <p className="text-[10px] xs:text-[11px] text-slate-400 mt-0.5 sm:mt-1 font-medium truncate">Sessions logged</p>
+            </div>
+
+            <div className="bg-white border border-slate-200 rounded-xl sm:rounded-2xl p-4 sm:p-5 shadow-sm">
+              <span className="text-[10px] xs:text-xs font-bold text-amber-600 uppercase truncate block">Defaulter Students</span>
+              <div className="text-2xl sm:text-3xl font-black text-amber-600 mt-1">{defaulters.length}</div>
+              <p className="text-[10px] xs:text-[11px] text-slate-400 mt-0.5 sm:mt-1 font-medium truncate">&lt; 75% threshold</p>
+            </div>
           </div>
         </div>
       )}
@@ -658,7 +665,7 @@ export function AdminPortal({ hodProfile, onLaunchLectureAsHod }) {
       {activeTab === 'settings' && (
         <div className="bg-white border border-slate-200 rounded-2xl sm:rounded-3xl p-4 xs:p-6 shadow-sm max-w-lg">
           <h3 className="text-base font-extrabold text-slate-900 mb-1 flex items-center space-x-2">
-            <Key className="w-4 h-4 text-indigo-600" />
+            <Key className="w-4 h-4 text-sky-600" />
             <span>Change HOD Private Password</span>
           </h3>
           <p className="text-xs text-slate-500 mb-4 font-medium">
@@ -687,7 +694,7 @@ export function AdminPortal({ hodProfile, onLaunchLectureAsHod }) {
                 value={currentPass}
                 onChange={(e) => setCurrentPass(e.target.value)}
                 placeholder="Enter current password"
-                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-base sm:text-sm text-slate-900 focus:border-indigo-600 outline-none min-h-[44px]"
+                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-base sm:text-sm text-slate-900 focus:border-sky-500 outline-none min-h-[44px]"
                 required
               />
             </div>
@@ -701,7 +708,7 @@ export function AdminPortal({ hodProfile, onLaunchLectureAsHod }) {
                 value={newPass}
                 onChange={(e) => setNewPass(e.target.value)}
                 placeholder="Min. 6 characters"
-                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-base sm:text-sm text-slate-900 focus:border-indigo-600 outline-none min-h-[44px]"
+                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-base sm:text-sm text-slate-900 focus:border-sky-500 outline-none min-h-[44px]"
                 required
               />
             </div>
@@ -721,7 +728,7 @@ export function AdminPortal({ hodProfile, onLaunchLectureAsHod }) {
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 xs:p-4">
           <div className="bg-white border border-slate-200 rounded-2xl sm:rounded-3xl p-5 sm:p-6 max-w-md w-full max-h-[90vh] overflow-y-auto shadow-2xl">
             <h3 className="text-base font-extrabold text-slate-900 mb-1 flex items-center space-x-2">
-              <Play className="w-5 h-5 text-indigo-600" />
+              <Play className="w-5 h-5 text-sky-600" />
               <span>Launch Lecture as HOD</span>
             </h3>
             <p className="text-xs text-slate-500 mb-4">Conduct class session as {currentHodName} ({currentDeptObj?.code})</p>
@@ -734,7 +741,7 @@ export function AdminPortal({ hodProfile, onLaunchLectureAsHod }) {
                   value={hodSubject}
                   onChange={(e) => setHodSubject(e.target.value)}
                   placeholder="e.g. Digital Signal Processing"
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-base sm:text-xs text-slate-900 font-bold outline-none focus:border-indigo-600 min-h-[44px]"
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-base sm:text-xs text-slate-900 font-bold outline-none focus:border-sky-500 min-h-[44px]"
                   required
                 />
               </div>
@@ -750,7 +757,7 @@ export function AdminPortal({ hodProfile, onLaunchLectureAsHod }) {
                         type="button"
                         onClick={() => toggleHodDivision(div)}
                         className={`py-2 rounded-xl text-xs font-bold border transition touch-target flex items-center justify-center ${
-                          isChecked ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-slate-50 border-slate-200 text-slate-700'
+                          isChecked ? 'bg-sky-600 text-white border-sky-600' : 'bg-slate-50 border-slate-200 text-slate-700'
                         }`}
                       >
                         {div}
@@ -784,7 +791,7 @@ export function AdminPortal({ hodProfile, onLaunchLectureAsHod }) {
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md shadow-indigo-100 touch-target flex items-center justify-center"
+                  className="flex-1 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs shadow-md shadow-sky-100 touch-target flex items-center justify-center"
                 >
                   Launch Screen
                 </button>
@@ -825,7 +832,7 @@ export function AdminPortal({ hodProfile, onLaunchLectureAsHod }) {
                     value={newRollNo}
                     onChange={(e) => setNewRollNo(e.target.value)}
                     placeholder="e.g. 24"
-                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-base sm:text-sm text-slate-900 outline-none focus:border-indigo-600 min-h-[44px]"
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-base sm:text-sm text-slate-900 outline-none focus:border-sky-500 min-h-[44px]"
                     required
                   />
                 </div>
@@ -836,7 +843,7 @@ export function AdminPortal({ hodProfile, onLaunchLectureAsHod }) {
                     value={newPrn}
                     onChange={(e) => setNewPrn(e.target.value)}
                     placeholder="e.g. 12251ET049"
-                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-base sm:text-sm text-slate-900 outline-none focus:border-indigo-600 min-h-[44px]"
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-base sm:text-sm text-slate-900 outline-none focus:border-sky-500 min-h-[44px]"
                     required
                   />
                 </div>
@@ -849,7 +856,7 @@ export function AdminPortal({ hodProfile, onLaunchLectureAsHod }) {
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
                   placeholder="Enter Full Name"
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-base sm:text-sm text-slate-900 outline-none focus:border-indigo-600 min-h-[44px]"
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-base sm:text-sm text-slate-900 outline-none focus:border-sky-500 min-h-[44px]"
                   required
                 />
               </div>
@@ -860,7 +867,7 @@ export function AdminPortal({ hodProfile, onLaunchLectureAsHod }) {
                   <select
                     value={newDivision}
                     onChange={(e) => setNewDivision(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-base sm:text-sm text-slate-900 outline-none focus:border-indigo-600 min-h-[44px]"
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-base sm:text-sm text-slate-900 outline-none focus:border-sky-500 min-h-[44px]"
                   >
                     <option value="SY-A">SY-A</option>
                     <option value="SY-B">SY-B</option>
@@ -872,7 +879,7 @@ export function AdminPortal({ hodProfile, onLaunchLectureAsHod }) {
                   <select
                     value={newBatch}
                     onChange={(e) => setNewBatch(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-base sm:text-sm text-slate-900 outline-none focus:border-indigo-600 min-h-[44px]"
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-base sm:text-sm text-slate-900 outline-none focus:border-sky-500 min-h-[44px]"
                   >
                     <option value="B1">B1</option>
                     <option value="B2">B2</option>
@@ -891,7 +898,7 @@ export function AdminPortal({ hodProfile, onLaunchLectureAsHod }) {
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md shadow-indigo-100 touch-target flex items-center justify-center"
+                  className="flex-1 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs shadow-md shadow-sky-100 touch-target flex items-center justify-center"
                 >
                   Add Student
                 </button>

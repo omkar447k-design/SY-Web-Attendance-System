@@ -240,7 +240,7 @@ export function Login({ onLoginSuccess }) {
     }
   }, [teacherName, teacherDept, modalMode]);
 
-  // Sync HOD Department State & Check Local Storage to never repeat setup
+  // Sync HOD Department State & Check Local Storage
   const updateSelectedHodDepartment = (deptId, deptList = hodDeptList) => {
     setSelectedHodDept(deptId);
     setAdminError('');
@@ -537,9 +537,9 @@ export function Login({ onLoginSuccess }) {
     <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center p-3 xs:p-4 sm:p-6 lg:p-8 bg-slate-50">
       <div className="w-full max-w-lg mx-auto">
         
-        {/* Welcome Header */}
+        {/* Welcome Header (White & Sky-Bluish Grey) */}
         <div className="text-center mb-5 sm:mb-6">
-          <div className="inline-flex items-center justify-center w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-indigo-600 shadow-xl shadow-indigo-200 mb-2.5 sm:mb-3 ring-4 ring-indigo-50">
+          <div className="inline-flex items-center justify-center w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-sky-600 shadow-xl shadow-sky-200 mb-2.5 sm:mb-3 ring-4 ring-sky-50">
             <GraduationCap className="w-8 h-8 sm:w-9 sm:h-9 text-white" />
           </div>
           <h1 className="text-xl xs:text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
@@ -551,10 +551,10 @@ export function Login({ onLoginSuccess }) {
         </div>
 
         {/* Main Card: STUDENT PORTAL ONLY */}
-        <div className="bg-white border border-slate-200/80 rounded-2xl sm:rounded-3xl p-4 xs:p-6 sm:p-8 shadow-xl shadow-slate-200/60">
+        <div className="bg-white border border-slate-200 rounded-2xl sm:rounded-3xl p-4 xs:p-6 sm:p-8 shadow-xl shadow-slate-200/50">
           
           <div className="flex items-center space-x-2.5 pb-3.5 sm:pb-4 mb-4 border-b border-slate-100">
-            <div className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center border border-indigo-100 flex-shrink-0">
+            <div className="w-9 h-9 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center border border-sky-100 flex-shrink-0">
               <Smartphone className="w-5 h-5" />
             </div>
             <div className="min-w-0">
@@ -575,7 +575,7 @@ export function Login({ onLoginSuccess }) {
             {/* 1. MANDATORY ID CARD UPLOAD */}
             <div>
               <label className="block text-[11px] xs:text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center justify-between">
-                <span className="flex items-center space-x-1.5 text-indigo-700">
+                <span className="flex items-center space-x-1.5 text-sky-800">
                   <Camera className="w-3.5 h-3.5 flex-shrink-0" />
                   <span>1. Upload College ID Card <span className="text-rose-500 font-bold">*COMPULSORY</span></span>
                 </span>
@@ -594,16 +594,16 @@ export function Login({ onLoginSuccess }) {
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  className="w-full p-3.5 xs:p-4 rounded-2xl border-2 border-dashed border-indigo-300 hover:border-indigo-600 bg-indigo-50/40 hover:bg-indigo-50/80 flex flex-col items-center justify-center space-y-1.5 sm:space-y-2 transition-all cursor-pointer group touch-target"
+                  className="w-full p-3.5 xs:p-4 rounded-2xl border-2 border-dashed border-sky-300 hover:border-sky-500 bg-sky-50/40 hover:bg-sky-50/80 flex flex-col items-center justify-center space-y-1.5 sm:space-y-2 transition-all cursor-pointer group touch-target"
                 >
-                  <div className="w-9 h-9 xs:w-10 xs:h-10 rounded-xl bg-white border border-indigo-200 group-hover:border-indigo-400 flex items-center justify-center text-indigo-600 shadow-sm transition">
+                  <div className="w-9 h-9 xs:w-10 xs:h-10 rounded-xl bg-white border border-sky-200 group-hover:border-sky-400 flex items-center justify-center text-sky-600 shadow-sm transition">
                     <Camera className="w-5 h-5" />
                   </div>
                   <div className="text-center">
-                    <p className="text-xs font-extrabold text-indigo-900">
+                    <p className="text-xs font-extrabold text-sky-950">
                       📸 Tap to Snap or Choose ID from Gallery
                     </p>
-                    <p className="text-[10px] xs:text-[11px] text-indigo-700 mt-0.5 font-medium">
+                    <p className="text-[10px] xs:text-[11px] text-sky-700 mt-0.5 font-medium">
                       AI reads PRN code (ET, CS, IT, AD, EL, IN) & locks department!
                     </p>
                   </div>
@@ -635,7 +635,7 @@ export function Login({ onLoginSuccess }) {
 
                   {ocrScanning && (
                     <div className="pt-2">
-                      <div className="flex items-center justify-between text-[11px] text-indigo-700 font-bold mb-1">
+                      <div className="flex items-center justify-between text-[11px] text-sky-800 font-bold mb-1">
                         <span className="flex items-center space-x-1 truncate">
                           <Sparkles className="w-3 h-3 animate-spin flex-shrink-0" />
                           <span className="truncate">{ocrStatusText}</span>
@@ -644,7 +644,7 @@ export function Login({ onLoginSuccess }) {
                       </div>
                       <div className="w-full h-1.5 rounded-full bg-slate-200 overflow-hidden">
                         <div
-                          className="h-full bg-indigo-600 rounded-full transition-all duration-300"
+                          className="h-full bg-sky-600 rounded-full transition-all duration-300"
                           style={{ width: `${ocrProgress}%` }}
                         ></div>
                       </div>
@@ -665,7 +665,7 @@ export function Login({ onLoginSuccess }) {
             <div>
               <label className="block text-[11px] xs:text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center justify-between">
                 <span className="flex items-center space-x-1.5">
-                  <Building2 className="w-3.5 h-3.5 text-indigo-600 flex-shrink-0" />
+                  <Building2 className="w-3.5 h-3.5 text-sky-600 flex-shrink-0" />
                   <span>2. Department <span className="text-rose-500 font-bold">*FROM ID CARD</span></span>
                 </span>
                 {department ? (
@@ -688,7 +688,7 @@ export function Login({ onLoginSuccess }) {
                     ? matchedDeptObj?.name || department.toUpperCase()
                     : '📸 Snap / Upload ID Card to auto-detect'}
                 </span>
-                <Lock className={`w-4 h-4 flex-shrink-0 ${department ? 'text-indigo-600' : 'text-slate-400'}`} />
+                <Lock className={`w-4 h-4 flex-shrink-0 ${department ? 'text-sky-600' : 'text-slate-400'}`} />
               </div>
               <p className="text-[10px] text-slate-400 mt-1">
                 🔒 Auto-extracted from PRN code (ET, CS, IT, AD, EL, IN).
@@ -708,7 +708,7 @@ export function Login({ onLoginSuccess }) {
                     onClick={() => setDivision(div)}
                     className={`py-2.5 sm:py-3 rounded-xl text-xs sm:text-sm font-extrabold border transition-all touch-target flex items-center justify-center ${
                       division === div
-                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-md shadow-indigo-100'
+                        ? 'bg-sky-600 text-white border-sky-600 shadow-md shadow-sky-100'
                         : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100 active:bg-slate-200'
                     }`}
                   >
@@ -723,7 +723,7 @@ export function Login({ onLoginSuccess }) {
               <div>
                 <label className="block text-[11px] xs:text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center justify-between">
                   <span className="flex items-center space-x-1">
-                    <Hash className="w-3.5 h-3.5 text-indigo-600 flex-shrink-0" />
+                    <Hash className="w-3.5 h-3.5 text-sky-600 flex-shrink-0" />
                     <span>4. Roll No <span className="text-rose-500 font-bold">*REQUIRED</span></span>
                   </span>
                 </label>
@@ -734,7 +734,7 @@ export function Login({ onLoginSuccess }) {
                   value={rollNo}
                   onChange={(e) => setRollNo(e.target.value)}
                   placeholder="Enter Roll No (e.g. 24)"
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-base text-slate-900 font-bold focus:border-indigo-600 focus:bg-white outline-none min-h-[44px]"
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-base text-slate-900 font-bold focus:border-sky-500 focus:bg-white outline-none min-h-[44px]"
                   required
                 />
               </div>
@@ -758,7 +758,7 @@ export function Login({ onLoginSuccess }) {
                   className={`w-full border rounded-xl px-3.5 py-2.5 text-base sm:text-sm font-bold outline-none min-h-[44px] ${
                     isPrnLocked
                       ? 'bg-slate-100 border-slate-300 text-slate-700 cursor-not-allowed'
-                      : 'bg-slate-50 border-slate-300 text-slate-900 focus:border-indigo-600'
+                      : 'bg-slate-50 border-slate-300 text-slate-900 focus:border-sky-500'
                   }`}
                   required
                 />
@@ -785,7 +785,7 @@ export function Login({ onLoginSuccess }) {
                 className={`w-full border rounded-xl px-3.5 py-2.5 text-base sm:text-sm font-bold outline-none min-h-[44px] ${
                   isNameLocked
                     ? 'bg-slate-100 border-slate-300 text-slate-700 cursor-not-allowed'
-                    : 'bg-slate-50 border-slate-300 text-slate-900 focus:border-indigo-600'
+                    : 'bg-slate-50 border-slate-300 text-slate-900 focus:border-sky-500'
                   }`}
                 required
               />
@@ -795,7 +795,7 @@ export function Login({ onLoginSuccess }) {
               <button
                 type="submit"
                 disabled={loading || ocrScanning || !isStudentFormComplete}
-                className="w-full py-3.5 sm:py-4 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs xs:text-sm shadow-lg shadow-indigo-200 flex items-center justify-center space-x-2 transition-all active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed min-h-[48px]"
+                className="w-full py-3.5 sm:py-4 px-4 rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs xs:text-sm shadow-lg shadow-sky-200 flex items-center justify-center space-x-2 transition-all active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed min-h-[48px]"
               >
                 <ShieldCheck className="w-4 h-4 flex-shrink-0" />
                 <span className="truncate">{loading ? 'Binding Phone & Entering...' : 'Verify All Fields & Enter Student Portal'}</span>
@@ -823,7 +823,7 @@ export function Login({ onLoginSuccess }) {
             }}
             className="text-xs text-slate-400 hover:text-slate-700 font-medium transition flex items-center justify-center space-x-1 mx-auto touch-target"
           >
-            <Lock className="w-3.5 h-3.5 text-indigo-600" />
+            <Lock className="w-3.5 h-3.5 text-sky-600" />
             <span>Faculty & Department Admin Access</span>
           </button>
         </div>
@@ -845,7 +845,7 @@ export function Login({ onLoginSuccess }) {
             {gatekeeperStage === 1 && (
               <div>
                 <div className="text-center mb-5">
-                  <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center mx-auto mb-2 border border-indigo-100">
+                  <div className="w-12 h-12 rounded-2xl bg-sky-50 text-sky-600 flex items-center justify-center mx-auto mb-2 border border-sky-100">
                     <Shield className="w-6 h-6" />
                   </div>
                   <h3 className="text-lg font-extrabold text-slate-900">Faculty & Department Portal</h3>
@@ -869,7 +869,7 @@ export function Login({ onLoginSuccess }) {
                       onChange={(e) => setGatekeeperCode(e.target.value)}
                       placeholder="Enter access code"
                       autoFocus
-                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-base text-slate-900 focus:border-indigo-600 focus:bg-white outline-none min-h-[44px]"
+                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-base text-slate-900 focus:border-sky-500 focus:bg-white outline-none min-h-[44px]"
                       required
                     />
                   </div>
@@ -877,7 +877,7 @@ export function Login({ onLoginSuccess }) {
                   <button
                     type="submit"
                     disabled={loading}
-                    className="w-full py-3 sm:py-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs sm:text-sm shadow-md shadow-indigo-100 transition active:scale-95 min-h-[44px]"
+                    className="w-full py-3 sm:py-3.5 rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs sm:text-sm shadow-md shadow-sky-100 transition active:scale-95 min-h-[44px]"
                   >
                     {loading ? 'Verifying...' : 'Unlock Department Portals →'}
                   </button>
@@ -896,13 +896,13 @@ export function Login({ onLoginSuccess }) {
                 <button
                   type="button"
                   onClick={() => setModalMode('teacher')}
-                  className="w-full p-3.5 sm:p-4 rounded-2xl border-2 border-indigo-200 hover:border-indigo-600 bg-indigo-50/50 hover:bg-indigo-50 flex items-center space-x-3 transition group text-left touch-target"
+                  className="w-full p-3.5 sm:p-4 rounded-2xl border-2 border-sky-200 hover:border-sky-500 bg-sky-50/50 hover:bg-sky-50 flex items-center space-x-3 transition group text-left touch-target"
                 >
-                  <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow-md shadow-indigo-200 flex-shrink-0">
+                  <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-sky-600 text-white flex items-center justify-center shadow-md shadow-sky-200 flex-shrink-0">
                     <Users className="w-5 h-5 sm:w-6 sm:h-6" />
                   </div>
                   <div className="min-w-0">
-                    <h4 className="text-xs sm:text-sm font-extrabold text-slate-900 group-hover:text-indigo-600 transition truncate">
+                    <h4 className="text-xs sm:text-sm font-extrabold text-slate-900 group-hover:text-sky-600 transition truncate">
                       👨‍🏫 Faculty / Teacher Login
                     </h4>
                     <p className="text-[11px] sm:text-xs text-slate-500 leading-tight">Log in with department, subject & password</p>
@@ -912,13 +912,13 @@ export function Login({ onLoginSuccess }) {
                 <button
                   type="button"
                   onClick={() => setModalMode('hod')}
-                  className="w-full p-3.5 sm:p-4 rounded-2xl border-2 border-slate-200 hover:border-indigo-600 bg-slate-50 hover:bg-indigo-50/30 flex items-center space-x-3 transition group text-left touch-target"
+                  className="w-full p-3.5 sm:p-4 rounded-2xl border-2 border-slate-200 hover:border-sky-500 bg-slate-50 hover:bg-sky-50/30 flex items-center space-x-3 transition group text-left touch-target"
                 >
                   <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-slate-800 text-white flex items-center justify-center shadow-md flex-shrink-0">
                     <Building2 className="w-5 h-5 sm:w-6 sm:h-6" />
                   </div>
                   <div className="min-w-0">
-                    <h4 className="text-xs sm:text-sm font-extrabold text-slate-900 group-hover:text-indigo-600 transition truncate">
+                    <h4 className="text-xs sm:text-sm font-extrabold text-slate-900 group-hover:text-sky-600 transition truncate">
                       👑 Department HOD Portal
                     </h4>
                     <p className="text-[11px] sm:text-xs text-slate-500 leading-tight">Only 1 HOD per department with master credentials</p>
@@ -942,13 +942,13 @@ export function Login({ onLoginSuccess }) {
               <div>
                 <div className="flex items-center justify-between mb-3.5 pb-2 border-b border-slate-100">
                   <h3 className="text-sm xs:text-base font-extrabold text-slate-900 flex items-center space-x-2 truncate">
-                    <Users className="w-4 h-4 text-indigo-600 flex-shrink-0" />
+                    <Users className="w-4 h-4 text-sky-600 flex-shrink-0" />
                     <span className="truncate">Faculty / Teacher Login</span>
                   </h3>
                   <button
                     type="button"
                     onClick={() => setModalMode('select')}
-                    className="text-xs font-bold text-indigo-600 hover:underline flex-shrink-0 ml-2"
+                    className="text-xs font-bold text-sky-600 hover:underline flex-shrink-0 ml-2"
                   >
                     Switch Role
                   </button>
@@ -968,7 +968,7 @@ export function Login({ onLoginSuccess }) {
                       value={teacherName}
                       onChange={(e) => setTeacherName(e.target.value)}
                       placeholder="Enter Full Professor Name"
-                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 text-base sm:text-xs text-slate-900 font-bold outline-none focus:border-indigo-600 min-h-[44px]"
+                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 text-base sm:text-xs text-slate-900 font-bold outline-none focus:border-sky-500 min-h-[44px]"
                       required
                     />
                   </div>
@@ -978,7 +978,7 @@ export function Login({ onLoginSuccess }) {
                     <select
                       value={teacherDept}
                       onChange={(e) => setTeacherDept(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 text-base sm:text-xs text-slate-900 font-semibold outline-none focus:border-indigo-600 min-h-[44px]"
+                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 text-base sm:text-xs text-slate-900 font-semibold outline-none focus:border-sky-500 min-h-[44px]"
                     >
                       {DEPARTMENTS.map(d => (
                         <option key={d.id} value={d.id}>{d.name}</option>
@@ -993,7 +993,7 @@ export function Login({ onLoginSuccess }) {
                       value={teacherSubject}
                       onChange={(e) => setTeacherSubject(e.target.value)}
                       placeholder="e.g. Digital Signal Processing"
-                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 text-base sm:text-xs text-slate-900 font-bold outline-none focus:border-indigo-600 min-h-[44px]"
+                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 text-base sm:text-xs text-slate-900 font-bold outline-none focus:border-sky-500 min-h-[44px]"
                       required
                     />
                   </div>
@@ -1010,7 +1010,7 @@ export function Login({ onLoginSuccess }) {
                             onClick={() => toggleDivisionSelection(div)}
                             className={`py-2 rounded-xl text-xs font-bold border transition touch-target flex items-center justify-center ${
                               isChecked
-                                ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
+                                ? 'bg-sky-600 text-white border-sky-600 shadow-sm'
                                 : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
                             }`}
                           >
@@ -1026,7 +1026,7 @@ export function Login({ onLoginSuccess }) {
                     <select
                       value={teacherBatch}
                       onChange={(e) => setTeacherBatch(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 text-base sm:text-xs text-slate-900 font-semibold outline-none focus:border-indigo-600 min-h-[44px]"
+                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 text-base sm:text-xs text-slate-900 font-semibold outline-none focus:border-sky-500 min-h-[44px]"
                     >
                       <option value="All">All Batches (Theory Lecture)</option>
                       <option value="B1">Batch B1 (Practical Lab)</option>
@@ -1036,9 +1036,9 @@ export function Login({ onLoginSuccess }) {
                   </div>
 
                   {teacherIsFirstTime ? (
-                    <div className="p-3 rounded-xl bg-indigo-50/80 border border-indigo-200 space-y-2">
-                      <div className="text-[11px] font-bold text-indigo-900 flex items-center space-x-1">
-                        <Sparkles className="w-3 h-3 text-indigo-600 flex-shrink-0" />
+                    <div className="p-3 rounded-xl bg-sky-50/80 border border-sky-200 space-y-2">
+                      <div className="text-[11px] font-bold text-sky-950 flex items-center space-x-1">
+                        <Sparkles className="w-3 h-3 text-sky-600 flex-shrink-0" />
                         <span>First-Time Setup: Set Private Password</span>
                       </div>
                       <input
@@ -1046,7 +1046,7 @@ export function Login({ onLoginSuccess }) {
                         value={teacherNewPassword}
                         onChange={(e) => setTeacherNewPassword(e.target.value)}
                         placeholder="Create Password (min. 4 chars)"
-                        className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-base sm:text-xs text-slate-900 outline-none focus:border-indigo-600 min-h-[44px]"
+                        className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-base sm:text-xs text-slate-900 outline-none focus:border-sky-500 min-h-[44px]"
                         required
                       />
                       <input
@@ -1054,7 +1054,7 @@ export function Login({ onLoginSuccess }) {
                         value={teacherConfirmPassword}
                         onChange={(e) => setTeacherConfirmPassword(e.target.value)}
                         placeholder="Confirm Password"
-                        className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-base sm:text-xs text-slate-900 outline-none focus:border-indigo-600 min-h-[44px]"
+                        className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-base sm:text-xs text-slate-900 outline-none focus:border-sky-500 min-h-[44px]"
                         required
                       />
                     </div>
@@ -1066,7 +1066,7 @@ export function Login({ onLoginSuccess }) {
                         value={teacherPassword}
                         onChange={(e) => setTeacherPassword(e.target.value)}
                         placeholder="Enter your faculty password"
-                        className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-base sm:text-xs text-slate-900 font-semibold outline-none focus:border-indigo-600 min-h-[44px]"
+                        className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-base sm:text-xs text-slate-900 font-semibold outline-none focus:border-sky-500 min-h-[44px]"
                         required
                       />
                     </div>
@@ -1083,7 +1083,7 @@ export function Login({ onLoginSuccess }) {
                     <button
                       type="submit"
                       disabled={loading}
-                      className="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md shadow-indigo-100 transition active:scale-95 touch-target flex items-center justify-center"
+                      className="flex-1 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs shadow-md shadow-sky-100 transition active:scale-95 touch-target flex items-center justify-center"
                     >
                       {loading ? 'Logging in...' : teacherIsFirstTime ? 'Save Password & Launch' : 'Enter Faculty Portal →'}
                     </button>
@@ -1097,13 +1097,13 @@ export function Login({ onLoginSuccess }) {
               <div>
                 <div className="flex items-center justify-between mb-3.5 pb-2 border-b border-slate-100">
                   <h3 className="text-sm xs:text-base font-extrabold text-slate-900 flex items-center space-x-2 truncate">
-                    <Building2 className="w-4 h-4 text-indigo-600 flex-shrink-0" />
+                    <Building2 className="w-4 h-4 text-sky-600 flex-shrink-0" />
                     <span className="truncate">Department HOD Login</span>
                   </h3>
                   <button
                     type="button"
                     onClick={() => setModalMode('select')}
-                    className="text-xs font-bold text-indigo-600 hover:underline flex-shrink-0 ml-2"
+                    className="text-xs font-bold text-sky-600 hover:underline flex-shrink-0 ml-2"
                   >
                     Switch Role
                   </button>
@@ -1123,7 +1123,7 @@ export function Login({ onLoginSuccess }) {
                     <select
                       value={selectedHodDept}
                       onChange={(e) => updateSelectedHodDepartment(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-base sm:text-sm text-slate-900 font-semibold focus:border-indigo-600 outline-none min-h-[44px]"
+                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-base sm:text-sm text-slate-900 font-semibold focus:border-sky-500 outline-none min-h-[44px]"
                     >
                       {DEPARTMENTS.map(d => (
                         <option key={d.id} value={d.id}>{d.name}</option>
@@ -1132,9 +1132,9 @@ export function Login({ onLoginSuccess }) {
                   </div>
 
                   {hodIsFirstTime ? (
-                    <div className="space-y-3 p-3.5 rounded-2xl bg-indigo-50/60 border border-indigo-200">
-                      <div className="text-xs font-bold text-indigo-900 flex items-center space-x-1.5">
-                        <Sparkles className="w-3.5 h-3.5 text-indigo-600 flex-shrink-0" />
+                    <div className="space-y-3 p-3.5 rounded-2xl bg-sky-50/60 border border-sky-200">
+                      <div className="text-xs font-bold text-sky-950 flex items-center space-x-1.5">
+                        <Sparkles className="w-3.5 h-3.5 text-sky-600 flex-shrink-0" />
                         <span>First-Time HOD Registration & Setup</span>
                       </div>
                       
@@ -1145,7 +1145,7 @@ export function Login({ onLoginSuccess }) {
                           value={hodName}
                           onChange={(e) => setHodName(e.target.value)}
                           placeholder="Enter your Full Name as HOD"
-                          className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-base sm:text-xs text-slate-900 font-bold outline-none focus:border-indigo-600 min-h-[44px]"
+                          className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-base sm:text-xs text-slate-900 font-bold outline-none focus:border-sky-500 min-h-[44px]"
                           required
                         />
                       </div>
@@ -1157,7 +1157,7 @@ export function Login({ onLoginSuccess }) {
                           value={hodNewPassword}
                           onChange={(e) => setHodNewPassword(e.target.value)}
                           placeholder="Min. 6 characters"
-                          className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-base sm:text-xs text-slate-900 outline-none focus:border-indigo-600 min-h-[44px]"
+                          className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-base sm:text-xs text-slate-900 outline-none focus:border-sky-500 min-h-[44px]"
                           required
                         />
                       </div>
@@ -1168,7 +1168,7 @@ export function Login({ onLoginSuccess }) {
                           value={hodConfirmPassword}
                           onChange={(e) => setHodConfirmPassword(e.target.value)}
                           placeholder="Repeat password"
-                          className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-base sm:text-xs text-slate-900 outline-none focus:border-indigo-600 min-h-[44px]"
+                          className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-base sm:text-xs text-slate-900 outline-none focus:border-sky-500 min-h-[44px]"
                           required
                         />
                       </div>
@@ -1176,7 +1176,7 @@ export function Login({ onLoginSuccess }) {
                   ) : (
                     <div>
                       <div className="mb-2 p-2.5 rounded-xl bg-slate-100 text-xs font-bold text-slate-800 flex items-center justify-between">
-                        <span className="truncate">👨‍🏫 Registered: <span className="text-indigo-600">{hodName || 'Department Head'}</span></span>
+                        <span className="truncate">👨‍🏫 Registered: <span className="text-sky-600">{hodName || 'Department Head'}</span></span>
                         <span className="text-[10px] text-emerald-600 font-extrabold flex-shrink-0 ml-1">● Configured</span>
                       </div>
                       <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
@@ -1188,7 +1188,7 @@ export function Login({ onLoginSuccess }) {
                         onChange={(e) => setHodPassword(e.target.value)}
                         placeholder="Enter your HOD password"
                         autoFocus
-                        className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-base sm:text-sm text-slate-900 focus:border-indigo-600 focus:bg-white outline-none min-h-[44px]"
+                        className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-base sm:text-sm text-slate-900 focus:border-sky-500 focus:bg-white outline-none min-h-[44px]"
                         required
                       />
                     </div>
@@ -1205,7 +1205,7 @@ export function Login({ onLoginSuccess }) {
                     <button
                       type="submit"
                       disabled={loading}
-                      className="flex-1 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs sm:text-sm shadow-md shadow-indigo-100 transition active:scale-95 touch-target flex items-center justify-center"
+                      className="flex-1 py-3 rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs sm:text-sm shadow-md shadow-sky-100 transition active:scale-95 touch-target flex items-center justify-center"
                     >
                       {loading ? 'Authenticating...' : hodIsFirstTime ? 'Create HOD Account & Enter' : 'Unlock HOD Portal'}
                     </button>
