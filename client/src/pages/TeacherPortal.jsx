@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Play, Plus, Square, Download, Users, Clock, CheckCircle, RefreshCw, UserPlus, Building2, CheckSquare, Square as SquareIcon, CheckCircle2, FileSpreadsheet, X, ArrowLeft } from 'lucide-react';
 import { api, getSocket } from '../services/api';
 import { TimerRing } from '../components/TimerRing';
+import { exportLectureExcelFile } from '../services/excelExport';
 
 const DEPARTMENTS = [
   { id: 'comp', name: 'Computer Science & Engineering', code: 'CSE' },
@@ -13,35 +14,6 @@ const DEPARTMENTS = [
 ];
 
 const DIVISIONS = ['SY-A', 'SY-B', 'SY-C'];
-
-function exportSessionReportLocally(sessionData) {
-  if (!sessionData) return;
-  const attendees = sessionData.attendees || [];
-  const dateStr = new Date().toLocaleDateString('en-GB').replace(/\//g, '-');
-  const filename = `Attendance_${(sessionData.subjectName || 'Lecture').replace(/[^a-zA-Z0-9]/g, '_')}_${(sessionData.division || 'SY').replace(/[^a-zA-Z0-9]/g, '_')}_${dateStr}.csv`;
-
-  let csvContent = `\uFEFF` +
-    `ATTENDANCE REPORT - ${(sessionData.subjectName || 'Lecture').toUpperCase()}\n` +
-    `Teacher: ${sessionData.teacherName || 'Faculty'}, Department: ${(sessionData.department || 'ENTC').toUpperCase()}, Class/Division: ${sessionData.division || 'SY-A'}, Batch: ${sessionData.batch || 'All'}\n` +
-    `Session Date: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}\n` +
-    `Total Verified Present: ${attendees.length} / ${sessionData.totalStudents || 80}\n\n` +
-    `Sr No,Roll No,PRN,Student Name,Division,Timestamp,Status\n`;
-
-  attendees.forEach((att, idx) => {
-    const time = att.timestamp ? new Date(att.timestamp).toLocaleTimeString() : new Date().toLocaleTimeString();
-    csvContent += `${idx + 1},${att.rollNo || ''},"${att.prn || ''}","${att.studentName || ''}",${att.division || ''},${time},PRESENT\n`;
-  });
-
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.setAttribute('download', filename);
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
-}
 
 export function TeacherPortal({ teacher, onBack }) {
   const [activeSession, setActiveSession] = useState(null);
@@ -235,8 +207,8 @@ export function TeacherPortal({ teacher, onBack }) {
     const sessionToSave = { ...activeSession };
     const sessionIdToEnd = activeSession.id;
 
-    // 1. Immediately conclude session locally and trigger download so teacher is never blocked
-    exportSessionReportLocally(sessionToSave);
+    // 1. Automatically export formatted Excel sheet directly to teacher's computer
+    exportLectureExcelFile(sessionToSave);
 
     setCompletedSummary({
       subjectName: sessionToSave.subjectName,
@@ -252,7 +224,7 @@ export function TeacherPortal({ teacher, onBack }) {
 
     // 2. Safely notify backend asynchronously in background
     try {
-      await api.endSession(sessionIdToEnd);
+      await api.endSession(sessionIdToEnd, sessionToSave);
     } catch (err) {
       console.warn('Background end session status:', err.message);
     }
@@ -318,11 +290,11 @@ export function TeacherPortal({ teacher, onBack }) {
           )}
           {activeSession && (
             <button
-              onClick={() => exportSessionReportLocally(activeSession)}
+              onClick={() => exportLectureExcelFile(activeSession)}
               className="flex items-center justify-center space-x-1.5 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold uppercase tracking-wider transition active:scale-95 touch-target"
             >
               <Download className="w-4 h-4 flex-shrink-0" />
-              <span>Export Sheet</span>
+              <span>Export Excel</span>
             </button>
           )}
         </div>
@@ -636,11 +608,11 @@ export function TeacherPortal({ teacher, onBack }) {
 
             <div className="space-y-2">
               <button
-                onClick={() => exportSessionReportLocally(completedSummary.sessionData)}
+                onClick={() => exportLectureExcelFile(completedSummary.sessionData)}
                 className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs uppercase tracking-wider flex items-center justify-center space-x-2 transition touch-target"
               >
                 <Download className="w-4 h-4" />
-                <span>Download Report (.csv / Excel)</span>
+                <span>Download Report (.xlsx)</span>
               </button>
 
               <button

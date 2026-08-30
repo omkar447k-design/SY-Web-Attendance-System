@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Shield, Users, Settings, AlertTriangle, Download, RefreshCw, UserPlus, Unlock, Search, BookOpen, Key, Building2, ImageIcon, Bell, CheckCircle2, Smartphone, ShieldCheck, KeyRound, Clock, UserCheck, Trash2, Play, PlusCircle } from 'lucide-react';
+import { Shield, Users, Settings, AlertTriangle, Download, RefreshCw, UserPlus, Unlock, Search, BookOpen, Key, Building2, ImageIcon, Bell, CheckCircle2, Smartphone, ShieldCheck, KeyRound, Clock, UserCheck, Trash2, Play, PlusCircle, FileSpreadsheet, ChevronDown, ChevronUp } from 'lucide-react';
 import { api } from '../services/api';
+import { exportLectureExcelFile } from '../services/excelExport';
 
 const DEPARTMENTS = [
   { id: 'comp', name: 'Computer Science & Engineering', code: 'CSE' },
@@ -14,12 +15,14 @@ const DEPARTMENTS = [
 const DIVISIONS = ['SY-A', 'SY-B', 'SY-C'];
 
 export function AdminPortal({ hodProfile, onLaunchLectureAsHod }) {
-  const [activeTab, setActiveTab] = useState('roster');
+  const [activeTab, setActiveTab] = useState('lectures'); // Default to Conducted Lectures
   const [stats, setStats] = useState(null);
   const [students, setStudents] = useState([]);
   const [teachers, setTeachers] = useState([]);
   const [settings, setSettings] = useState({});
   const [loginLogs, setLoginLogs] = useState([]);
+  const [conductedLectures, setConductedLectures] = useState([]);
+  const [expandedLectureId, setExpandedLectureId] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   
   const currentDept = hodProfile?.department || 'entc';
@@ -53,12 +56,13 @@ export function AdminPortal({ hodProfile, onLaunchLectureAsHod }) {
 
   const loadData = async () => {
     try {
-      const [statsRes, studRes, teachRes, setRes, logsRes] = await Promise.all([
+      const [statsRes, studRes, teachRes, setRes, logsRes, lectRes] = await Promise.all([
         api.getAdminStats(currentDept),
         api.getStudents({ division: divisionFilter, department: currentDept }),
         api.getTeachers(),
         api.getSettings(),
-        api.getLoginLogs(currentDept)
+        api.getLoginLogs(currentDept),
+        api.getConductedLectures(currentDept)
       ]);
 
       if (statsRes.success) setStats(statsRes.data);
@@ -68,6 +72,7 @@ export function AdminPortal({ hodProfile, onLaunchLectureAsHod }) {
       }
       if (setRes.success) setSettings(setRes.data);
       if (logsRes.success) setLoginLogs(logsRes.data || []);
+      if (lectRes.success) setConductedLectures(lectRes.data || []);
     } catch (err) {
       console.warn('Admin portal data refresh:', err.message);
     } finally {
@@ -217,7 +222,6 @@ export function AdminPortal({ hodProfile, onLaunchLectureAsHod }) {
     }
   });
   const studentLogs = Array.from(studentLogsMap.values());
-  const facultyLogs = loginLogs.filter(l => l.type === 'FACULTY_LECTURE_START' || l.type === 'FACULTY_LECTURE_END');
   const currentDeptObj = DEPARTMENTS.find(d => d.id === currentDept);
 
   return (
@@ -255,7 +259,7 @@ export function AdminPortal({ hodProfile, onLaunchLectureAsHod }) {
             className="flex items-center justify-center space-x-1.5 px-3.5 py-2 bg-white hover:bg-slate-50 text-slate-800 text-xs font-bold border border-slate-300 transition touch-target"
           >
             <Download className="w-3.5 h-3.5 flex-shrink-0" />
-            <span className="hidden xs:inline">Export Excel</span>
+            <span className="hidden xs:inline">Master Report</span>
           </a>
 
           <button
@@ -272,12 +276,13 @@ export function AdminPortal({ hodProfile, onLaunchLectureAsHod }) {
       <div className="border-b border-slate-200 pb-2 overflow-x-auto scrollbar-none -mx-4 px-4 sm:mx-0 sm:px-0">
         <div className="flex space-x-2 min-w-max">
           {[
-            { id: 'roster', label: `Student Roster (${filteredStudents.length})`, icon: Users },
-            { id: 'audit', label: `Live Logins (${studentLogs.length})`, icon: Bell },
-            { id: 'faculty', label: `Faculty (${teachers.length})`, icon: UserCheck },
-            { id: 'overview', label: 'Department Overview', icon: Shield },
-            { id: 'defaulters', label: `Defaulters (${defaulters.length})`, icon: AlertTriangle },
-            { id: 'settings', label: 'Security & Password', icon: Settings }
+            { id: 'lectures', label: `📚 Conducted Lectures (${conductedLectures.length})`, icon: BookOpen },
+            { id: 'roster', label: `👥 Student Roster (${filteredStudents.length})`, icon: Users },
+            { id: 'audit', label: `🔔 Live Logins (${studentLogs.length})`, icon: Bell },
+            { id: 'faculty', label: `👨‍🏫 Faculty (${teachers.length})`, icon: UserCheck },
+            { id: 'overview', label: '📊 Overview', icon: Shield },
+            { id: 'defaulters', label: `⚠️ Defaulters (${defaulters.length})`, icon: AlertTriangle },
+            { id: 'settings', label: '⚙️ Security', icon: Settings }
           ].map(tab => (
             <button
               key={tab.id}
@@ -294,7 +299,144 @@ export function AdminPortal({ hodProfile, onLaunchLectureAsHod }) {
         </div>
       </div>
 
-      {/* TAB 1: VERIFIED STUDENT ROSTER */}
+      {/* TAB 1: DEDICATED CONDUCTED LECTURES WITH SEPARATE EXCEL DOWNLOAD FOR EACH */}
+      {activeTab === 'lectures' && (
+        <div className="bg-white border border-slate-200 p-5 sm:p-6 shadow-sm space-y-4">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 pb-3 border-b border-slate-200">
+            <div>
+              <h3 className="text-base sm:text-lg font-bold text-slate-900 flex items-center space-x-2">
+                <BookOpen className="w-5 h-5 text-sky-600 flex-shrink-0" />
+                <span>All Conducted Lectures & Individual Attendance Sheets</span>
+              </h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Download individual Excel (.xlsx) reports for each completed lecture session in {currentDeptObj?.name}.
+              </p>
+            </div>
+            <span className="px-3 py-1 bg-slate-100 text-slate-800 text-xs font-bold border border-slate-200 flex-shrink-0">
+              Total Lectures: {conductedLectures.length}
+            </span>
+          </div>
+
+          <div className="space-y-3">
+            {conductedLectures.length === 0 ? (
+              <div className="p-10 text-center text-slate-400 text-xs font-medium space-y-2 border border-dashed border-slate-300">
+                <FileSpreadsheet className="w-10 h-10 text-slate-300 mx-auto stroke-[1.5]" />
+                <p className="font-bold text-slate-700 text-sm">No lecture sessions conducted yet in {currentDeptObj?.code}.</p>
+                <p>When professors or the HOD launch and conclude attendance sessions, each lecture will be archived here with individual Excel download buttons.</p>
+              </div>
+            ) : (
+              conductedLectures.map((lect, idx) => {
+                const isExpanded = expandedLectureId === (lect.id || idx);
+                const conductedDate = lect.date || (lect.startTime ? new Date(lect.startTime).toLocaleDateString() : 'Today');
+                const conductedTime = lect.startTime ? new Date(lect.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+                const attendees = lect.attendees || [];
+                const presentCount = lect.totalPresent !== undefined ? lect.totalPresent : attendees.length;
+
+                return (
+                  <div
+                    key={lect.id || idx}
+                    className="p-4 sm:p-5 bg-slate-50 border border-slate-200 hover:border-slate-300 transition space-y-3"
+                  >
+                    {/* Top Row: Details & Actions */}
+                    <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-3">
+                      <div className="min-w-0 flex-1 space-y-1">
+                        <div className="flex items-center space-x-2 flex-wrap">
+                          <span className="font-bold text-slate-900 text-sm sm:text-base">{lect.subjectName}</span>
+                          <span className="text-xs font-semibold px-2 py-0.5 bg-white text-slate-700 border border-slate-200">
+                            {lect.division}
+                          </span>
+                          {lect.batch && lect.batch !== 'All' && (
+                            <span className="text-xs font-medium px-2 py-0.5 bg-white text-slate-600 border border-slate-200">
+                              Batch: {lect.batch}
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="flex items-center space-x-4 text-xs text-slate-600 flex-wrap gap-y-1">
+                          <span className="flex items-center space-x-1">
+                            <span className="text-slate-400 font-medium">Faculty:</span>
+                            <span className="font-semibold text-slate-800">{lect.teacherName || 'Faculty Member'}</span>
+                          </span>
+                          <span className="flex items-center space-x-1">
+                            <Clock className="w-3.5 h-3.5 text-slate-400" />
+                            <span className="font-medium text-slate-700">{conductedDate} {conductedTime ? `at ${conductedTime}` : ''}</span>
+                          </span>
+                          <span className="flex items-center space-x-1 font-bold text-emerald-700">
+                            <span>Present:</span>
+                            <span>{presentCount} Students</span>
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Download & Toggle Buttons */}
+                      <div className="flex items-center space-x-2 w-full lg:w-auto justify-between lg:justify-end pt-2 lg:pt-0 border-t lg:border-t-0 border-slate-200">
+                        <button
+                          onClick={() => exportLectureExcelFile(lect)}
+                          className="flex-1 lg:flex-none flex items-center justify-center space-x-1.5 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold tracking-wide uppercase transition active:scale-95 touch-target shadow-sm"
+                          title="Download Formatted Excel Sheet (.xlsx)"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                          <span>Download Excel (.xlsx)</span>
+                        </button>
+
+                        <button
+                          onClick={() => setExpandedLectureId(isExpanded ? null : (lect.id || idx))}
+                          className="px-3 py-2 bg-white hover:bg-slate-100 text-slate-700 text-xs font-semibold border border-slate-300 transition touch-target flex items-center space-x-1"
+                          title="Preview Verified Student Attendees"
+                        >
+                          <span>{isExpanded ? 'Hide' : 'Preview'}</span>
+                          {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Expandable Attendee Preview Table */}
+                    {isExpanded && (
+                      <div className="mt-3 pt-3 border-t border-slate-200 bg-white p-3 border">
+                        <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-2">
+                          Verified Present Students ({attendees.length}):
+                        </h4>
+                        {attendees.length === 0 ? (
+                          <p className="text-xs text-slate-500">No student detail records stored in preview for this session. Excel will include summary sheet.</p>
+                        ) : (
+                          <div className="overflow-x-auto max-h-48 overflow-y-auto">
+                            <table className="w-full text-left text-xs">
+                              <thead className="bg-slate-50 border-b border-slate-200 font-bold text-slate-600">
+                                <tr>
+                                  <th className="py-1.5 px-2">Roll No.</th>
+                                  <th className="py-1.5 px-2">Student Name</th>
+                                  <th className="py-1.5 px-2">PRN</th>
+                                  <th className="py-1.5 px-2">Status</th>
+                                  <th className="py-1.5 px-2">Time</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100 text-slate-700">
+                                {attendees.map((att, aIdx) => (
+                                  <tr key={aIdx} className="hover:bg-slate-50">
+                                    <td className="py-1.5 px-2 font-bold text-slate-900">#{att.rollNo}</td>
+                                    <td className="py-1.5 px-2 font-medium text-slate-800">{att.studentName}</td>
+                                    <td className="py-1.5 px-2 font-mono text-[11px] text-slate-500">{att.prn}</td>
+                                    <td className="py-1.5 px-2 font-bold text-emerald-700">PRESENT</td>
+                                    <td className="py-1.5 px-2 text-slate-400">
+                                      {att.timestamp ? new Date(att.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : conductedTime}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* TAB 2: VERIFIED STUDENT ROSTER */}
       {activeTab === 'roster' && (
         <div className="bg-white border border-slate-200 p-5 sm:p-6 shadow-sm space-y-4">
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pb-3 border-b border-slate-200">
@@ -405,7 +547,7 @@ export function AdminPortal({ hodProfile, onLaunchLectureAsHod }) {
                             className="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-semibold border border-rose-200 transition flex items-center space-x-0.5 touch-target"
                             title="Expel / Permanently Delete Student"
                           >
-                            <Trash2 className="w-3 h-3" />
+                            <Trash2 className="w-3.5 h-3.5" />
                             <span>Delete</span>
                           </button>
                         </div>
@@ -419,7 +561,7 @@ export function AdminPortal({ hodProfile, onLaunchLectureAsHod }) {
         </div>
       )}
 
-      {/* TAB 2: LIVE STUDENT LOGINS & ID AUDIT */}
+      {/* TAB 3: LIVE STUDENT LOGINS & ID AUDIT */}
       {activeTab === 'audit' && (
         <div className="bg-white border border-slate-200 p-5 sm:p-6 shadow-sm space-y-4">
           <div className="flex flex-col xs:flex-row items-start xs:items-center justify-between gap-2 pb-3 border-b border-slate-200">
@@ -505,7 +647,7 @@ export function AdminPortal({ hodProfile, onLaunchLectureAsHod }) {
         </div>
       )}
 
-      {/* TAB 3: FACULTY ROSTER */}
+      {/* TAB 4: FACULTY ROSTER */}
       {activeTab === 'faculty' && (
         <div className="space-y-5 sm:space-y-6">
           <div className="bg-white border border-slate-200 p-5 sm:p-6 shadow-sm">
@@ -550,49 +692,10 @@ export function AdminPortal({ hodProfile, onLaunchLectureAsHod }) {
               )}
             </div>
           </div>
-
-          {/* Lecture Logs */}
-          <div className="bg-white border border-slate-200 p-5 sm:p-6 shadow-sm space-y-3.5">
-            <h3 className="text-sm sm:text-base font-bold text-slate-900">Lecture Session History</h3>
-            <div className="space-y-2.5 max-h-[400px] overflow-y-auto pr-1">
-              {facultyLogs.length === 0 ? (
-                <div className="p-6 text-center text-slate-400 text-xs font-medium">No lectures recorded yet.</div>
-              ) : (
-                facultyLogs.map(log => (
-                  <div key={log.id} className="p-3.5 bg-slate-50 border border-slate-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="flex items-center space-x-2 flex-wrap">
-                        <span className="font-bold text-slate-900 text-xs sm:text-sm truncate">👨‍🏫 {log.teacherName}</span>
-                        <span className="text-[10px] font-semibold px-2 py-0.5 bg-white text-slate-700 border border-slate-200 flex-shrink-0">
-                          {log.subjectName}
-                        </span>
-                      </div>
-                      <p className="text-xs text-slate-600 mt-1">
-                        Divisions: <span className="font-bold text-slate-800">{log.division}</span>
-                        {log.batch !== 'All' ? ` • Batch: ${log.batch}` : ''}
-                        {log.totalPresent !== undefined ? ` • Present: ${log.totalPresent}` : ''}
-                      </p>
-                    </div>
-
-                    <div className="text-left sm:text-right border-t sm:border-t-0 pt-1.5 sm:pt-0 border-slate-200 w-full sm:w-auto">
-                      <span className={`text-[10px] font-semibold px-2 py-0.5 uppercase border ${
-                        log.type === 'FACULTY_LECTURE_START' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-slate-200 text-slate-700 border-slate-300'
-                      }`}>
-                        {log.type === 'FACULTY_LECTURE_START' ? '● Active' : 'Concluded'}
-                      </span>
-                      <p className="text-[10px] text-slate-400 font-medium mt-0.5">
-                        {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • {new Date(log.timestamp).toLocaleDateString()}
-                      </p>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
         </div>
       )}
 
-      {/* TAB 4: OVERVIEW STATS */}
+      {/* TAB 5: OVERVIEW STATS */}
       {activeTab === 'overview' && (
         <div className="space-y-4 sm:space-y-6">
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
@@ -609,9 +712,9 @@ export function AdminPortal({ hodProfile, onLaunchLectureAsHod }) {
             </div>
 
             <div className="bg-white border border-slate-200 p-4 sm:p-5 shadow-sm">
-              <span className="text-xs font-semibold text-sky-600 uppercase truncate block">Lectures Conducted</span>
-              <div className="text-2xl sm:text-3xl font-extrabold text-sky-600 mt-1">{facultyLogs.length}</div>
-              <p className="text-xs text-slate-400 mt-0.5 font-medium truncate">Sessions logged</p>
+              <span className="text-xs font-semibold text-sky-600 uppercase truncate block">Conducted Lectures</span>
+              <div className="text-2xl sm:text-3xl font-extrabold text-sky-600 mt-1">{conductedLectures.length}</div>
+              <p className="text-xs text-slate-400 mt-0.5 font-medium truncate">With Excel sheets</p>
             </div>
 
             <div className="bg-white border border-slate-200 p-4 sm:p-5 shadow-sm">
@@ -623,7 +726,7 @@ export function AdminPortal({ hodProfile, onLaunchLectureAsHod }) {
         </div>
       )}
 
-      {/* TAB 5: DEFAULTERS */}
+      {/* TAB 6: DEFAULTERS */}
       {activeTab === 'defaulters' && (
         <div className="bg-white border border-slate-200 p-5 sm:p-6 shadow-sm space-y-4">
           <div className="flex items-center justify-between pb-3 border-b border-slate-200">
@@ -671,7 +774,7 @@ export function AdminPortal({ hodProfile, onLaunchLectureAsHod }) {
         </div>
       )}
 
-      {/* TAB 6: SECURITY & PASSWORD */}
+      {/* TAB 7: SECURITY & PASSWORD */}
       {activeTab === 'settings' && (
         <div className="bg-white border border-slate-200 p-5 sm:p-6 shadow-sm max-w-lg">
           <h3 className="text-base font-bold text-slate-900 mb-1 flex items-center space-x-2">

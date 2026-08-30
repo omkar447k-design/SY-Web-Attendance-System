@@ -63,6 +63,18 @@ function deleteStudentLocally(studentId) {
   setLocalData(STORAGE_KEYS.LOGS, logs);
 }
 
+export function saveSessionLocally(session) {
+  if (!session || !session.id) return;
+  const list = getLocalData(STORAGE_KEYS.SESSIONS);
+  const idx = list.findIndex(s => s.id === session.id);
+  if (idx >= 0) {
+    list[idx] = { ...list[idx], ...session };
+  } else {
+    list.unshift(session);
+  }
+  setLocalData(STORAGE_KEYS.SESSIONS, list);
+}
+
 function saveLogLocally(log) {
   if (!log) return;
   const logs = getLocalData(STORAGE_KEYS.LOGS);
@@ -130,16 +142,14 @@ export const api = {
 
     const localLogs = getLocalData(STORAGE_KEYS.LOGS).filter(l => !department || department === 'all' || l.department === department);
 
-    // STRICT 1-ENTRY DEDUPLICATION PER STUDENT (eliminates duplicates & blinking)
+    // STRICT 1-ENTRY DEDUPLICATION PER STUDENT
     const uniqueLogMap = new Map();
 
-    // 1. Process server logs first
     serverLogs.forEach(l => {
       const key = `${l.department || 'entc'}_${l.division || 'SY-A'}_${l.rollNo || l.studentId}`;
       uniqueLogMap.set(key, l);
     });
 
-    // 2. Merge local logs
     localLogs.forEach(l => {
       const key = `${l.department || 'entc'}_${l.division || 'SY-A'}_${l.rollNo || l.studentId}`;
       if (!uniqueLogMap.has(key)) {
@@ -153,6 +163,50 @@ export const api = {
     combined.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
     setLocalData(STORAGE_KEYS.LOGS, combined);
 
+    return { success: true, data: combined };
+  },
+
+  getConductedLectures: async (department) => {
+    let serverLogs = [];
+    try {
+      const res = await request(`/api/admin/logs${department ? `?department=${department}` : ''}`);
+      if (res.success && Array.isArray(res.data)) {
+        serverLogs = res.data.filter(l => l.type === 'FACULTY_LECTURE_START' || l.type === 'FACULTY_LECTURE_END');
+      }
+    } catch (e) {}
+
+    const localSessions = getLocalData(STORAGE_KEYS.SESSIONS).filter(s => !department || department === 'all' || s.department === department);
+
+    const sessionMap = new Map();
+    localSessions.forEach(s => {
+      sessionMap.set(s.id, s);
+    });
+
+    serverLogs.forEach(l => {
+      const sessId = l.sessionId || l.id;
+      if (!sessionMap.has(sessId)) {
+        sessionMap.set(sessId, {
+          id: sessId,
+          subjectName: l.subjectName || 'Lecture',
+          teacherName: l.teacherName || 'Faculty Member',
+          department: l.department || department || 'entc',
+          division: l.division || 'SY-A',
+          batch: l.batch || 'All',
+          startTime: l.timestamp,
+          endTime: l.timestamp,
+          date: l.timestamp ? new Date(l.timestamp).toLocaleDateString() : new Date().toLocaleDateString(),
+          totalPresent: l.totalPresent || 0,
+          attendees: l.attendees || []
+        });
+      } else {
+        const existing = sessionMap.get(sessId);
+        if (l.totalPresent !== undefined) existing.totalPresent = Math.max(existing.totalPresent || 0, l.totalPresent);
+        if (l.attendees && l.attendees.length > 0) existing.attendees = l.attendees;
+      }
+    });
+
+    const combined = Array.from(sessionMap.values());
+    combined.sort((a, b) => new Date(b.startTime || b.date || 0) - new Date(a.startTime || a.date || 0));
     return { success: true, data: combined };
   },
 
@@ -192,7 +246,6 @@ export const api = {
       const serverStudents = res.data || [];
       const localStudents = getLocalData(STORAGE_KEYS.STUDENTS);
 
-      // Merge permanent local store with server response
       const combinedMap = new Map();
       localStudents.forEach(s => {
         combinedMap.set(`${s.department || 'entc'}_${s.division || 'SY-A'}_${s.rollNo}`, s);
@@ -271,13 +324,32 @@ export const api = {
   getSubjects: () => request('/api/admin/subjects'),
   getMasterExcelUrl: (division = 'SY-A') => `${API_BASE}/api/admin/export/master?division=${division}`,
 
-  // Teacher Auth (Individual First-Time Password Setup & Login)
+  // Teacher Auth
   teacherAuth: (data) => request('/api/teacher/auth', { method: 'POST', body: JSON.stringify(data) }),
   checkTeacherStatus: (data) => request('/api/teacher/check-status', { method: 'POST', body: JSON.stringify(data) }),
   getTeacherActiveSession: (teacherId) => request(`/api/teacher/session/active${teacherId ? `?teacherId=${teacherId}` : ''}`),
-  startSession: (data) => request('/api/teacher/session/start', { method: 'POST', body: JSON.stringify(data) }),
+  startSession: async (data) => {
+    const res = await request('/api/teacher/session/start', { method: 'POST', body: JSON.stringify(data) });
+    if (res.success && res.session) {
+      saveSessionLocally(res.session);
+    }
+    return res;
+  },
   extendSession: (sessionId, extraMinutes = 1) => request('/api/teacher/session/extend', { method: 'POST', body: JSON.stringify({ sessionId, extraMinutes }) }),
-  endSession: (sessionId) => request('/api/teacher/session/end', { method: 'POST', body: JSON.stringify({ sessionId }) }),
+  endSession: async (sessionId, sessionData) => {
+    if (sessionData) {
+      saveSessionLocally({ ...sessionData, status: 'closed', endTime: new Date().toISOString() });
+    }
+    try {
+      const res = await request('/api/teacher/session/end', { method: 'POST', body: JSON.stringify({ sessionId }) });
+      if (res.success && res.session) {
+        saveSessionLocally(res.session);
+      }
+      return res;
+    } catch (e) {
+      return { success: true, message: 'Session concluded locally' };
+    }
+  },
   manualMarkAttendance: (sessionId, rollNo) => request('/api/teacher/session/manual-mark', { method: 'POST', body: JSON.stringify({ sessionId, rollNo }) }),
   getSessionExcelUrl: (sessionId) => `${API_BASE}/api/teacher/session/${sessionId}/export`,
 
