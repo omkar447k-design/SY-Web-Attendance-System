@@ -232,27 +232,29 @@ export function TeacherPortal({ teacher, onBack }) {
     if (!activeSession) return;
     if (!window.confirm('Are you sure you want to conclude this attendance session?')) return;
 
+    const sessionToSave = { ...activeSession };
+    const sessionIdToEnd = activeSession.id;
+
+    // 1. Immediately conclude session locally and trigger download so teacher is never blocked
+    exportSessionReportLocally(sessionToSave);
+
+    setCompletedSummary({
+      subjectName: sessionToSave.subjectName,
+      division: sessionToSave.division,
+      batch: sessionToSave.batch,
+      totalPresent: sessionToSave.totalPresent || (sessionToSave.attendees?.length || 0),
+      totalStudents: sessionToSave.totalStudents || (80 * (sessionToSave.divisions?.length || 1)),
+      attendees: sessionToSave.attendees || [],
+      sessionData: sessionToSave
+    });
+
+    setActiveSession(null);
+
+    // 2. Safely notify backend asynchronously in background
     try {
-      const sessionToSave = { ...activeSession };
-      const res = await api.endSession(activeSession.id);
-      
-      // Auto-trigger direct CSV download for teacher
-      exportSessionReportLocally(sessionToSave);
-
-      // Show clean summary dialog
-      setCompletedSummary({
-        subjectName: sessionToSave.subjectName,
-        division: sessionToSave.division,
-        batch: sessionToSave.batch,
-        totalPresent: sessionToSave.totalPresent || (sessionToSave.attendees?.length || 0),
-        totalStudents: sessionToSave.totalStudents || (80 * (sessionToSave.divisions?.length || 1)),
-        attendees: sessionToSave.attendees || [],
-        sessionData: sessionToSave
-      });
-
-      setActiveSession(null);
+      await api.endSession(sessionIdToEnd);
     } catch (err) {
-      alert(err.message || 'Failed to end session');
+      console.warn('Background end session status:', err.message);
     }
   };
 
