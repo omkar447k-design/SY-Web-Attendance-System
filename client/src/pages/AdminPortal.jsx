@@ -356,11 +356,6 @@ export function AdminPortal({ hodProfile, onLaunchLectureAsHod }) {
                           <span className="text-xs font-semibold px-2 py-0.5 bg-white text-slate-700 border border-slate-200">
                             {lect.division}
                           </span>
-                          {lect.batch && lect.batch !== 'All' && (
-                            <span className="text-xs font-medium px-2 py-0.5 bg-white text-slate-600 border border-slate-200">
-                              Batch: {lect.batch}
-                            </span>
-                          )}
                         </div>
 
                         <div className="flex items-center space-x-4 text-xs text-slate-600 flex-wrap gap-y-1">
@@ -519,7 +514,7 @@ export function AdminPortal({ hodProfile, onLaunchLectureAsHod }) {
                       <td className="py-2.5 px-3 font-semibold text-slate-900">{student.name}</td>
                       <td className="py-2.5 px-3">
                         <span className="px-2 py-0.5 bg-slate-100 text-slate-800 font-bold text-xs border border-slate-200">
-                          {student.division || 'SY-A'}{student.batch && student.batch !== 'All' ? ` • ${student.batch}` : ''}
+                          {student.division || 'SY-A'}
                         </span>
                       </td>
                       <td className="py-2.5 px-3">

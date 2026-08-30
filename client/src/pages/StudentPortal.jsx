@@ -121,7 +121,7 @@ export function StudentPortal({ student, device }) {
             <div className="flex items-center space-x-2 flex-wrap">
               <h2 className="text-lg sm:text-xl font-bold text-slate-900 truncate">{student.name}</h2>
               <span className="text-xs font-semibold px-2 py-0.5 bg-slate-100 text-slate-700 border border-slate-200 flex-shrink-0">
-                {student.division} • {student.batch || 'B1'}
+                {student.division}
               </span>
             </div>
             
@@ -265,7 +265,7 @@ export function StudentPortal({ student, device }) {
             </div>
             <div className="flex justify-between py-1.5 border-b border-slate-100">
               <span className="text-slate-500 font-medium">Class / Division:</span>
-              <span className="font-bold text-slate-900">{student.division} • {student.batch || 'B1'}</span>
+              <span className="font-bold text-slate-900">{student.division}</span>
             </div>
             <div className="flex justify-between py-1.5">
               <span className="text-slate-500 font-medium">Phone Security:</span>
