@@ -237,13 +237,13 @@ export function TeacherPortal({ teacher }) {
   return (
     <div className="max-w-6xl mx-auto px-3 xs:px-4 sm:px-6 py-4 xs:py-6 sm:py-8 space-y-4 sm:space-y-6">
       
-      {/* Teacher Profile Bar (White & Sky-Bluish Grey) */}
-      <div className="bg-white border border-slate-200 rounded-2xl sm:rounded-3xl p-4 xs:p-5 sm:p-6 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3.5 sm:gap-4">
+      {/* Teacher Profile Bar (Sharp Rectangular Black & White) */}
+      <div className="bg-white border-2 border-slate-300 p-4 xs:p-5 sm:p-6 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3.5 sm:gap-4">
         <div className="min-w-0">
-          <span className="text-[10px] xs:text-xs font-bold uppercase tracking-wider text-sky-600">Faculty In-Charge</span>
-          <h2 className="text-lg xs:text-xl sm:text-2xl font-extrabold text-slate-900 truncate">{teacherName}</h2>
-          <p className="text-xs text-slate-500 mt-0.5 font-medium flex items-center space-x-1.5 truncate">
-            <Building2 className="w-3.5 h-3.5 text-sky-500 flex-shrink-0" />
+          <span className="text-[10px] xs:text-xs font-black uppercase tracking-wider text-sky-600">Faculty In-Charge</span>
+          <h2 className="text-lg xs:text-xl sm:text-2xl font-black text-black uppercase truncate">{teacherName}</h2>
+          <p className="text-xs text-slate-600 mt-0.5 font-bold flex items-center space-x-1.5 truncate">
+            <Building2 className="w-3.5 h-3.5 text-sky-600 flex-shrink-0" />
             <span className="truncate">{deptObj?.name || department.toUpperCase()} • SY Lecture Portal</span>
           </p>
         </div>
@@ -253,7 +253,7 @@ export function TeacherPortal({ teacher }) {
             <a
               href={api.getSessionExcelUrl(activeSession.id)}
               download
-              className="w-full sm:w-auto flex items-center justify-center space-x-1.5 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-md shadow-emerald-100 transition active:scale-95 touch-target"
+              className="w-full sm:w-auto flex items-center justify-center space-x-1.5 px-4 py-2.5 bg-black hover:bg-slate-800 text-white text-xs font-black uppercase tracking-wider transition active:scale-95 touch-target"
             >
               <Download className="w-4 h-4 flex-shrink-0" />
               <span>Export Lecture Sheet (.xlsx)</span>
@@ -262,38 +262,38 @@ export function TeacherPortal({ teacher }) {
         )}
       </div>
 
-      {/* ACTIVE SESSION PROJECTOR SCREEN (Deep Sky-Bluish Slate) */}
+      {/* ACTIVE SESSION PROJECTOR SCREEN (Sharp Architectural Black Box) */}
       {activeSession ? (
-        <div className="bg-gradient-to-b from-slate-900 via-slate-900 to-sky-950 text-white rounded-2xl sm:rounded-3xl p-4 xs:p-6 sm:p-10 shadow-2xl border border-sky-900/40">
+        <div className="bg-black text-white p-4 xs:p-6 sm:p-10 border-2 border-black">
           
           <div className="flex flex-col lg:flex-row items-center justify-between gap-6 sm:gap-8">
             
             {/* Left: Glowing PIN Display */}
             <div className="flex-1 text-center lg:text-left w-full">
-              <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] xs:text-xs font-bold uppercase tracking-wider mb-2.5 sm:mb-3 border border-emerald-500/30">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+              <div className="inline-flex items-center space-x-2 px-3 py-1 bg-white/10 text-sky-300 text-[10px] xs:text-xs font-black uppercase tracking-wider mb-2.5 sm:mb-3 border border-white/20">
+                <span className="w-2 h-2 bg-sky-400"></span>
                 <span>Classroom Attendance Active</span>
               </div>
 
-              <h1 className="text-xl xs:text-2xl sm:text-4xl font-extrabold text-white tracking-tight break-words">
+              <h1 className="text-xl xs:text-2xl sm:text-4xl font-black text-white uppercase tracking-tight break-words">
                 {activeSession.subjectName}
               </h1>
-              <p className="text-slate-300 text-xs sm:text-sm mt-1">
-                Class / Divisions: <span className="text-sky-300 font-extrabold text-xs xs:text-base bg-sky-950/80 px-2 py-0.5 rounded-lg border border-sky-500/40">{activeSession.division}</span>
+              <p className="text-slate-300 text-xs sm:text-sm mt-1 font-semibold">
+                Class / Divisions: <span className="text-sky-300 font-black text-xs xs:text-base px-2 py-0.5 bg-white/10 border border-white/20">{activeSession.division}</span>
                 {activeSession.batch !== 'All' ? ` • Batch: ${activeSession.batch}` : ''}
               </p>
 
-              {/* GIANT PIN BOX */}
-              <div className="my-4 sm:my-6 inline-flex flex-col items-center p-4 xs:p-6 sm:p-8 rounded-2xl sm:rounded-3xl bg-slate-950 border-2 border-sky-500/80 shadow-2xl shadow-sky-500/20 max-w-full">
-                <span className="text-[10px] xs:text-xs uppercase font-extrabold tracking-widest text-slate-400 mb-2 text-center">
+              {/* GIANT PIN BOX (Sharp Rectangular) */}
+              <div className="my-4 sm:my-6 inline-flex flex-col items-center p-4 xs:p-6 sm:p-8 bg-black border-2 border-white/30 max-w-full">
+                <span className="text-[10px] xs:text-xs uppercase font-black tracking-widest text-slate-300 mb-2.5 text-center">
                   CLASSROOM ACTIVE PIN (ROTATES IN 10s)
                 </span>
                 
-                <div className="flex items-center space-x-2 xs:space-x-3 sm:space-x-5 max-w-full justify-center">
+                <div className="flex items-center space-x-2 xs:space-x-3 sm:space-x-4 max-w-full justify-center">
                   {String(activeSession?.pinInfo?.pin || '8492').split('').map((digit, idx) => (
                     <div
                       key={idx}
-                      className="w-12 h-16 xs:w-14 xs:h-18 sm:w-20 sm:h-24 rounded-xl sm:rounded-2xl bg-gradient-to-b from-slate-800 to-slate-900 border-2 border-sky-400/80 flex items-center justify-center text-3xl xs:text-4xl sm:text-6xl font-black text-white shadow-xl shadow-sky-500/30 transition-all"
+                      className="w-12 h-16 xs:w-14 xs:h-18 sm:w-20 sm:h-24 bg-white text-black border-2 border-white flex items-center justify-center text-3xl xs:text-4xl sm:text-6xl font-black transition-all"
                     >
                       {digit}
                     </div>
@@ -301,29 +301,29 @@ export function TeacherPortal({ teacher }) {
                 </div>
 
                 {/* 10-Second Timer Ring */}
-                <div className="flex items-center space-x-2.5 xs:space-x-3 mt-3.5 sm:mt-4">
+                <div className="flex items-center space-x-2.5 xs:space-x-3 mt-4">
                   <TimerRing
                     secondsRemaining={activeSession?.pinInfo?.secondsRemaining || 10}
                     totalSeconds={10}
-                    size={42}
+                    size={40}
                     stroke={4}
                   />
-                  <span className="text-xs text-slate-400 font-semibold">
-                    New PIN in <span className="text-sky-400 font-bold">{activeSession?.pinInfo?.secondsRemaining || 10}s</span>...
+                  <span className="text-xs text-slate-300 font-bold">
+                    New PIN in <span className="text-sky-400 font-black">{activeSession?.pinInfo?.secondsRemaining || 10}s</span>...
                   </span>
                 </div>
               </div>
 
-              {/* Timer Controls */}
+              {/* Timer Controls (Sharp Buttons) */}
               <div className="flex flex-wrap items-center justify-center lg:justify-start gap-2 sm:gap-3 mt-2">
-                <div className="flex items-center space-x-2 px-3.5 py-2 rounded-xl bg-slate-800 border border-slate-700 text-white font-extrabold text-xs sm:text-sm">
-                  <Clock className="w-4 h-4 text-amber-400 animate-pulse flex-shrink-0" />
-                  <span>Session: <span className="font-mono text-amber-300">{formatTime(activeSession.remainingSessionSec || 0)}</span></span>
+                <div className="flex items-center space-x-2 px-3.5 py-2 bg-white/10 border border-white/20 text-white font-black text-xs sm:text-sm uppercase">
+                  <Clock className="w-4 h-4 text-sky-400 flex-shrink-0" />
+                  <span>Session: <span className="font-mono text-sky-300">{formatTime(activeSession.remainingSessionSec || 0)}</span></span>
                 </div>
 
                 <button
                   onClick={() => handleExtend(1)}
-                  className="flex items-center space-x-1 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-sky-300 text-xs font-bold border border-slate-700 transition touch-target"
+                  className="flex items-center space-x-1 px-3 py-2 bg-white/10 hover:bg-white/20 text-white text-xs font-black uppercase border border-white/20 transition touch-target"
                 >
                   <Plus className="w-3.5 h-3.5" />
                   <span>+1 Min</span>
@@ -331,7 +331,7 @@ export function TeacherPortal({ teacher }) {
 
                 <button
                   onClick={() => handleExtend(2)}
-                  className="flex items-center space-x-1 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-sky-300 text-xs font-bold border border-slate-700 transition touch-target"
+                  className="flex items-center space-x-1 px-3 py-2 bg-white/10 hover:bg-white/20 text-white text-xs font-black uppercase border border-white/20 transition touch-target"
                 >
                   <Plus className="w-3.5 h-3.5" />
                   <span>+2 Mins</span>
@@ -339,7 +339,7 @@ export function TeacherPortal({ teacher }) {
 
                 <button
                   onClick={handleEndSession}
-                  className="flex items-center space-x-1.5 px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold shadow-lg shadow-rose-600/30 transition touch-target"
+                  className="flex items-center space-x-1.5 px-3.5 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-black uppercase tracking-wider transition touch-target"
                 >
                   <Square className="w-3.5 h-3.5" />
                   <span>End Session</span>
@@ -347,22 +347,22 @@ export function TeacherPortal({ teacher }) {
               </div>
             </div>
 
-            {/* Right: Live Attendee Stats (80-Student Capacity) */}
-            <div className="w-full lg:w-80 bg-slate-950/80 border border-slate-800 rounded-2xl sm:rounded-3xl p-4 xs:p-6 flex flex-col justify-between">
-              <div className="text-center pb-3 sm:pb-4 border-b border-slate-800">
-                <span className="text-[10px] xs:text-xs font-extrabold uppercase tracking-wider text-slate-400">Total Verified Present</span>
-                <div className="text-4xl sm:text-5xl font-black text-emerald-400 mt-1">
+            {/* Right: Live Attendee Stats (Sharp Black Container) */}
+            <div className="w-full lg:w-80 bg-white/5 border border-white/20 p-4 xs:p-6 flex flex-col justify-between">
+              <div className="text-center pb-3 sm:pb-4 border-b border-white/15">
+                <span className="text-[10px] xs:text-xs font-black uppercase tracking-wider text-slate-300">Total Verified Present</span>
+                <div className="text-4xl sm:text-5xl font-black text-white mt-1">
                   {activeSession.totalPresent || 0}
-                  <span className="text-base sm:text-lg text-slate-500 font-bold"> / {activeSession.totalStudents || (80 * (activeSession.divisions?.length || 1))}</span>
+                  <span className="text-base sm:text-lg text-slate-400 font-bold"> / {activeSession.totalStudents || (80 * (activeSession.divisions?.length || 1))}</span>
                 </div>
-                <div className="text-xs text-slate-400 mt-1">
-                  Divisions: <span className="text-sky-300 font-bold">{activeSession.division}</span>
+                <div className="text-xs text-slate-300 mt-1 font-bold">
+                  Divisions: <span className="text-sky-300 font-black">{activeSession.division}</span>
                 </div>
               </div>
 
               {/* Manual Mark Input */}
               <form onSubmit={handleManualMark} className="mt-3 sm:mt-4">
-                <label className="block text-[10px] xs:text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                <label className="block text-[10px] xs:text-[11px] font-black text-slate-300 uppercase tracking-wider mb-1">
                   Manual Override (Dead Battery)
                 </label>
                 <div className="flex space-x-2">
@@ -371,11 +371,11 @@ export function TeacherPortal({ teacher }) {
                     value={manualRollNo}
                     onChange={(e) => setManualRollNo(e.target.value)}
                     placeholder="Roll No"
-                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-base sm:text-xs text-white outline-none focus:border-sky-500 min-h-[40px]"
+                    className="w-full bg-white/10 border border-white/30 px-3 py-2 text-base sm:text-xs text-white font-bold outline-none focus:border-white min-h-[40px]"
                   />
                   <button
                     type="submit"
-                    className="px-3.5 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold flex items-center space-x-1 touch-target flex-shrink-0"
+                    className="px-3.5 py-2 bg-white hover:bg-slate-200 text-black text-xs font-black uppercase flex items-center space-x-1 touch-target flex-shrink-0"
                   >
                     <UserPlus className="w-3.5 h-3.5" />
                     <span>Add</span>
@@ -386,9 +386,9 @@ export function TeacherPortal({ teacher }) {
 
           </div>
 
-          {/* LIVE ATTENDEE ROSTER GRID */}
-          <div className="mt-6 sm:mt-8 pt-4 sm:pt-6 border-t border-slate-800">
-            <h3 className="text-xs sm:text-sm font-bold text-slate-300 uppercase tracking-wider mb-3 flex items-center space-x-2">
+          {/* LIVE ATTENDEE ROSTER GRID (Sharp Rectangles) */}
+          <div className="mt-6 sm:mt-8 pt-4 sm:pt-6 border-t border-white/20">
+            <h3 className="text-xs sm:text-sm font-black text-white uppercase tracking-wider mb-3 flex items-center space-x-2">
               <Users className="w-4 h-4 text-sky-400 flex-shrink-0" />
               <span>Live Attendance Feed (Updating in Real-Time)</span>
             </h3>
@@ -397,14 +397,14 @@ export function TeacherPortal({ teacher }) {
               {activeSession.attendees?.map((att) => (
                 <div
                   key={att.id}
-                  className="p-2 sm:p-2.5 rounded-xl bg-slate-800/90 border border-emerald-500/40 flex items-center space-x-2 shadow-sm min-w-0"
+                  className="p-2 sm:p-2.5 bg-white/10 border border-white/20 flex items-center space-x-2 min-w-0"
                 >
-                  <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-emerald-500/20 text-emerald-300 font-extrabold text-xs flex items-center justify-center flex-shrink-0">
+                  <div className="w-6 h-6 sm:w-7 sm:h-7 bg-white text-black font-black text-xs flex items-center justify-center flex-shrink-0">
                     {att.rollNo}
                   </div>
                   <div className="overflow-hidden min-w-0 flex-1">
-                    <p className="font-bold text-white text-[11px] sm:text-xs truncate">{att.studentName}</p>
-                    <p className="text-[9px] xs:text-[10px] text-sky-300 truncate">{att.division} • {new Date(att.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                    <p className="font-black text-white text-[11px] sm:text-xs truncate">{att.studentName}</p>
+                    <p className="text-[9px] xs:text-[10px] text-sky-300 font-bold truncate">{att.division} • {new Date(att.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
                   </div>
                 </div>
               ))}
@@ -413,27 +413,27 @@ export function TeacherPortal({ teacher }) {
 
         </div>
       ) : (
-        /* LAUNCH NEW SESSION FORM (White & Sky-Bluish Grey) */
-        <div className="bg-white border border-slate-200 rounded-2xl sm:rounded-3xl p-4 xs:p-6 sm:p-8 shadow-sm max-w-2xl mx-auto">
+        /* LAUNCH NEW SESSION FORM (Sharp Rectangular White Form) */
+        <div className="bg-white border-2 border-slate-300 p-4 xs:p-6 sm:p-8 shadow-sm max-w-2xl mx-auto">
           <div className="text-center mb-5 sm:mb-6">
-            <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-sky-50 text-sky-600 flex items-center justify-center mx-auto mb-2.5 sm:mb-3 border border-sky-100">
-              <Play className="w-5 h-5 sm:w-6 sm:h-6 fill-sky-600" />
+            <div className="w-11 h-11 sm:w-12 sm:h-12 bg-black text-white flex items-center justify-center mx-auto mb-2.5 sm:mb-3 border border-slate-800">
+              <Play className="w-5 h-5 sm:w-6 sm:h-6 fill-white" />
             </div>
-            <h3 className="text-lg xs:text-xl font-extrabold text-slate-900">Start Lecture Attendance</h3>
-            <p className="text-slate-500 text-xs mt-0.5 font-medium">Launches the 10-second rotating PIN on screen for students.</p>
+            <h3 className="text-lg xs:text-xl font-black text-black uppercase">Start Lecture Attendance</h3>
+            <p className="text-slate-500 text-xs mt-0.5 font-bold">Launches the 10-second rotating PIN on screen for students.</p>
           </div>
 
           <form onSubmit={handleStartSession} className="space-y-3.5 sm:space-y-4">
             
             {/* Department Selection */}
             <div>
-              <label className="block text-[11px] xs:text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+              <label className="block text-[11px] xs:text-xs font-black text-black uppercase tracking-wider mb-1.5">
                 Department
               </label>
               <select
                 value={department}
                 onChange={(e) => setDepartment(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-base sm:text-sm text-slate-900 font-semibold focus:border-sky-500 outline-none min-h-[44px]"
+                className="w-full bg-white border-2 border-slate-300 px-3.5 py-2.5 text-base sm:text-sm text-black font-bold focus:border-black outline-none min-h-[44px]"
               >
                 {DEPARTMENTS.map(d => (
                   <option key={d.id} value={d.id}>{d.name}</option>
@@ -444,10 +444,10 @@ export function TeacherPortal({ teacher }) {
             {/* MULTI-DIVISION CHECKBOXES */}
             <div>
               <div className="flex items-center justify-between mb-1.5">
-                <label className="block text-[11px] xs:text-xs font-bold text-slate-700 uppercase tracking-wider">
+                <label className="block text-[11px] xs:text-xs font-black text-black uppercase tracking-wider">
                   Target Class / Division(s)
                 </label>
-                <span className="text-[10px] xs:text-[11px] text-sky-600 font-bold">
+                <span className="text-[10px] xs:text-[11px] text-sky-700 font-bold uppercase">
                   {selectedDivisions.length > 1 ? `Combined (${selectedDivisions.join(' + ')})` : 'Single Division'}
                 </span>
               </div>
@@ -460,10 +460,10 @@ export function TeacherPortal({ teacher }) {
                       key={div}
                       type="button"
                       onClick={() => toggleDivision(div)}
-                      className={`py-2.5 px-2 sm:px-3 rounded-xl text-xs sm:text-sm font-extrabold border transition-all flex items-center justify-center space-x-1.5 touch-target ${
+                      className={`py-2.5 px-2 sm:px-3 text-xs sm:text-sm font-black border-2 transition-all flex items-center justify-center space-x-1.5 touch-target uppercase ${
                         isChecked
-                          ? 'bg-sky-600 text-white border-sky-600 shadow-md shadow-sky-100'
-                          : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                          ? 'bg-black text-white border-black'
+                          : 'bg-white border-slate-300 text-black hover:bg-slate-100'
                       }`}
                     >
                       {isChecked ? (
@@ -480,7 +480,7 @@ export function TeacherPortal({ teacher }) {
 
             {/* Custom Subject Name Input */}
             <div>
-              <label className="block text-[11px] xs:text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+              <label className="block text-[11px] xs:text-xs font-black text-black uppercase tracking-wider mb-1.5">
                 Subject / Lecture Name
               </label>
               <input
@@ -488,20 +488,20 @@ export function TeacherPortal({ teacher }) {
                 value={subjectName}
                 onChange={(e) => setSubjectName(e.target.value)}
                 placeholder="Enter Subject Name (e.g. Digital Signal Processing)"
-                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-base sm:text-sm text-slate-900 font-bold focus:border-sky-500 outline-none min-h-[44px]"
+                className="w-full bg-white border-2 border-slate-300 px-3.5 py-2.5 text-base sm:text-sm text-black font-black focus:border-black outline-none min-h-[44px]"
                 required
               />
             </div>
 
             {/* Batch Selection */}
             <div>
-              <label className="block text-[11px] xs:text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+              <label className="block text-[11px] xs:text-xs font-black text-black uppercase tracking-wider mb-1.5">
                 Batch
               </label>
               <select
                 value={batch}
                 onChange={(e) => setBatch(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-base sm:text-sm text-slate-900 font-semibold focus:border-sky-500 outline-none min-h-[44px]"
+                className="w-full bg-white border-2 border-slate-300 px-3.5 py-2.5 text-base sm:text-sm text-black font-bold focus:border-black outline-none min-h-[44px]"
               >
                 <option value="All">All Batches (Theory Lecture)</option>
                 <option value="B1">Batch B1 (Practical Lab)</option>
@@ -512,7 +512,7 @@ export function TeacherPortal({ teacher }) {
 
             {/* Attendance Duration */}
             <div>
-              <label className="block text-[11px] xs:text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+              <label className="block text-[11px] xs:text-xs font-black text-black uppercase tracking-wider mb-1.5">
                 Attendance Window Duration
               </label>
               <div className="grid grid-cols-4 gap-1.5 sm:gap-2">
@@ -521,10 +521,10 @@ export function TeacherPortal({ teacher }) {
                     key={mins}
                     type="button"
                     onClick={() => setDurationMinutes(mins)}
-                    className={`py-2 sm:py-2.5 rounded-xl text-xs font-extrabold border transition touch-target flex items-center justify-center ${
+                    className={`py-2 sm:py-2.5 text-xs font-black border-2 transition touch-target flex items-center justify-center ${
                       durationMinutes === mins
-                        ? 'bg-sky-600 text-white border-sky-600 shadow-md shadow-sky-100'
-                        : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                        ? 'bg-black text-white border-black'
+                        : 'bg-white border-slate-300 text-black hover:bg-slate-100'
                     }`}
                   >
                     {mins}m
@@ -537,7 +537,7 @@ export function TeacherPortal({ teacher }) {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full py-3.5 sm:py-4 rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-extrabold text-xs xs:text-sm shadow-lg shadow-sky-200 flex items-center justify-center space-x-2 transition active:scale-[0.98] min-h-[48px] touch-target"
+                className="w-full py-3.5 sm:py-4 bg-black hover:bg-slate-800 text-white font-black text-xs xs:text-sm tracking-wider uppercase border border-black flex items-center justify-center space-x-2 transition active:scale-[0.98] min-h-[48px] touch-target"
               >
                 <Play className="w-4 h-4 fill-white" />
                 <span>Launch Attendance Session</span>
