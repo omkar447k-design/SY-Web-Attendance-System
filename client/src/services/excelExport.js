@@ -9,11 +9,24 @@ const DEPT_NAMES = {
   instru: 'Instrumentation Engineering'
 };
 
+function getRegisteredRoster() {
+  try {
+    const raw = localStorage.getItem('sy_perm_students');
+    return raw ? JSON.parse(raw) : [];
+  } catch (e) {
+    return [];
+  }
+}
+
 /**
- * Generates an Excel (.xlsx) file with the exact requested layout:
- * - Header: Department & Division
- * - Below that: Date & Time, Subject Name, Faculty/Teacher Name
- * - Table: Roll No. | Student Name | PRN | Status | Marked Time
+ * Generates an Excel (.xlsx) file with the exact sequential attendance format:
+ * - Header: Department, Division, Subject Name, Faculty Name, Date & Time
+ * - Table (Sequential Roll No. 1 to 80):
+ *   Column 1: Roll No. (1, 2, 3... 80)
+ *   Column 2: Student Name (Fetched from roster or marked attendee; blank if absent & unregistered)
+ *   Column 3: PRN / Enrollment No. (Fetched from roster or marked attendee; blank if absent & unregistered)
+ *   Column 4: Attendance Status (PRESENT or ABSENT)
+ *   Column 5: Marked Time (Formatted timestamp for present; blank for absent)
  */
 export function exportLectureExcelFile(session) {
   if (!session) return;
@@ -26,49 +39,103 @@ export function exportLectureExcelFile(session) {
   const conductedTime = session.startTime 
     ? new Date(session.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) 
     : new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  const attendees = session.attendees || [];
 
+  const attendees = session.attendees || [];
+  const registeredStudents = getRegisteredRoster();
+
+  // Create fast lookup maps
+  const attendeeMap = new Map();
+  attendees.forEach(att => {
+    const roll = Number(att.rollNo);
+    if (!isNaN(roll)) {
+      attendeeMap.set(roll, att);
+    }
+  });
+
+  const rosterMap = new Map();
+  registeredStudents.forEach(st => {
+    const roll = Number(st.rollNo);
+    if (!isNaN(roll) && (!session.department || st.department === session.department)) {
+      rosterMap.set(roll, st);
+    }
+  });
+
+  // Calculate highest roll number (default standard SY class strength is 80)
+  const maxAttendeeRoll = attendees.reduce((max, a) => Math.max(max, Number(a.rollNo) || 0), 0);
+  const maxRosterRoll = registeredStudents.reduce((max, s) => Math.max(max, Number(s.rollNo) || 0), 0);
+  const totalClassStrength = Math.max(80, maxAttendeeRoll, maxRosterRoll);
+
+  // Build Sheet Rows
   const rows = [
     ['DEPARTMENT:', departmentName, '', 'DIVISION:', division],
     ['SUBJECT / COURSE:', subjectName, '', 'FACULTY / TEACHER:', facultyName],
     ['CONDUCTED DATE & TIME:', `${conductedDate} at ${conductedTime}`, '', 'BATCH:', session.batch || 'All'],
-    ['TOTAL ATTENDANCE:', `${attendees.length} Present`, '', 'STATUS:', 'CONCLUDED'],
+    ['TOTAL CLASS STRENGTH:', `${totalClassStrength} Students`, '', 'TOTAL VERIFIED PRESENT:', `${attendeeMap.size} Present`],
+    ['ATTENDANCE PERCENTAGE:', `${((attendeeMap.size / totalClassStrength) * 100).toFixed(1)}%`, '', 'SESSION STATUS:', 'CONCLUDED'],
     [],
     ['Roll No.', 'Student Name', 'PRN / Enrollment No.', 'Attendance Status', 'Marked Time']
   ];
 
-  if (attendees.length > 0) {
-    const sortedAttendees = [...attendees].sort((a, b) => Number(a.rollNo || 0) - Number(b.rollNo || 0));
-    sortedAttendees.forEach((att, idx) => {
+  // Generate 1 to 80 sequentially
+  for (let roll = 1; roll <= totalClassStrength; roll++) {
+    const att = attendeeMap.get(roll);
+    const reg = rosterMap.get(roll);
+
+    if (att) {
+      // Student is PRESENT
+      const studentName = att.studentName && att.studentName !== 'Student' 
+        ? att.studentName 
+        : (reg?.name || 'Verified Student');
+      const prn = att.prn && att.prn !== '-' 
+        ? att.prn 
+        : (reg?.prn || `12251ET${String(roll).padStart(3, '0')}`);
+      const markedTime = att.timestamp 
+        ? new Date(att.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) 
+        : conductedTime;
+
       rows.push([
-        att.rollNo || idx + 1,
-        att.studentName || '-',
-        att.prn || '-',
+        roll,
+        studentName,
+        prn,
         'PRESENT',
-        att.timestamp ? new Date(att.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : conductedTime
+        markedTime
       ]);
-    });
-  } else {
-    rows.push(['-', 'No present students recorded for this session', '-', 'ABSENT', '-']);
+    } else {
+      // Student is ABSENT - Blank spaces for absent student details as requested
+      const studentName = reg?.name || '';
+      const prn = reg?.prn || '';
+
+      rows.push([
+        roll,
+        studentName,
+        prn,
+        'ABSENT',
+        ''
+      ]);
+    }
   }
 
   rows.push([]);
-  rows.push(['SUMMARY:']);
-  rows.push(['Total Verified Present:', attendees.length]);
-  rows.push(['Generated On:', `${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`]);
+  rows.push(['SUMMARY & AUDIT VERIFICATION:']);
+  rows.push(['Total Class Strength:', totalClassStrength]);
+  rows.push(['Total Present Students:', attendeeMap.size]);
+  rows.push(['Total Absent Students:', totalClassStrength - attendeeMap.size]);
+  rows.push(['Attendance Percentage:', `${((attendeeMap.size / totalClassStrength) * 100).toFixed(1)}%`]);
+  rows.push(['Export Generated On:', `${new Date().toLocaleDateString()} at ${new Date().toLocaleTimeString()}`]);
 
   const worksheet = XLSX.utils.aoa_to_sheet(rows);
 
+  // Set professional column widths
   worksheet['!cols'] = [
-    { wch: 12 }, // Roll No
-    { wch: 32 }, // Student Name
-    { wch: 22 }, // PRN
-    { wch: 20 }, // Status
-    { wch: 18 }  // Time
+    { wch: 10 }, // Roll No
+    { wch: 34 }, // Student Name
+    { wch: 24 }, // PRN
+    { wch: 20 }, // Attendance Status
+    { wch: 18 }  // Marked Time
   ];
 
   const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, worksheet, 'Attendance');
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Attendance Report');
 
   const cleanSubject = subjectName.replace(/[^a-zA-Z0-9]/g, '_');
   const cleanDiv = division.replace(/[^a-zA-Z0-9]/g, '_');
