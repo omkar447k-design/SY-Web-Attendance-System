@@ -179,11 +179,15 @@ export const api = {
   },
 
   getStudents: async (params = {}) => {
-    let cloudStudents = await CloudSync.getStudents(params.department, params.division);
+    const dept = typeof params === 'object' && params !== null ? params.department : params;
+    const div = typeof params === 'object' && params !== null ? params.division : null;
+    const search = typeof params === 'object' && params !== null ? params.search : null;
+
+    let cloudStudents = await CloudSync.getStudents(dept, div);
 
     let filtered = cloudStudents;
-    if (params.search) {
-      const q = params.search.toLowerCase();
+    if (search) {
+      const q = search.toLowerCase();
       filtered = filtered.filter(s =>
         s.name?.toLowerCase().includes(q) ||
         String(s.rollNo).includes(q) ||

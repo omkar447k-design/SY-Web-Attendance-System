@@ -135,9 +135,6 @@ export function TeacherPortal({ teacher, onBack }) {
               attendees: sessRes.session.attendees
             };
           });
-        } else if (sessRes.success && !sessRes.active) {
-          setActiveSession(null);
-          loadConductedLectures();
         }
       } catch (err) {
         console.warn('Session sync poll:', err.message);

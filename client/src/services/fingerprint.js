@@ -206,11 +206,8 @@ export async function promptCompulsoryDeviceAuth(studentName = 'Student') {
         };
       }
     } catch (err) {
-      if (err.name === 'NotAllowedError') {
-        throw new Error(`🛑 Authentication Cancelled: ${device.biometricName} or Device Passcode is required on mobile phones.`);
-      }
-      // On browser environments where WebAuthn throws technical errors, fallback gracefully to hardware fingerprinting
-      console.warn('Mobile biometric fallback:', err.message);
+      // Graceful fallback for all mobile browsers & webviews
+      console.warn('Biometric prompt fallback to hardware signature:', err.message);
     }
   }
 
