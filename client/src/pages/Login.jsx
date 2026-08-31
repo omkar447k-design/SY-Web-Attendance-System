@@ -6,6 +6,7 @@ import {
   UserCheck, UserPlus, LogIn, RefreshCw
 } from 'lucide-react';
 import { createWorker } from 'tesseract.js';
+import confetti from 'canvas-confetti';
 import { api } from '../services/api';
 import { getDeviceIdentity, getDeviceType, promptCompulsoryDeviceAuth } from '../services/fingerprint';
 
@@ -230,6 +231,7 @@ export function Login({ onLoginSuccess }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [adminError, setAdminError] = useState('');
+  const [regSuccessData, setRegSuccessData] = useState(null);
 
   useEffect(() => {
     if (window.location.hash === '#admin' || window.location.pathname === '/admin') {
@@ -449,7 +451,18 @@ export function Login({ onLoginSuccess }) {
       });
 
       if (res.success) {
-        onLoginSuccess('student', res.student, { deviceId, fingerprint, deviceName, biometricName });
+        try {
+          confetti({ particleCount: 90, spread: 70, origin: { y: 0.6 } });
+        } catch (e) {}
+
+        setRegSuccessData({
+          student: res.student,
+          meta: { deviceId, fingerprint, deviceName, biometricName }
+        });
+
+        setTimeout(() => {
+          onLoginSuccess('student', res.student, { deviceId, fingerprint, deviceName, biometricName });
+        }, 1600);
       }
     } catch (err) {
       setError(err.message || 'Registration failed. Duplicate records or conflicting details are prohibited.');
@@ -1369,6 +1382,51 @@ export function Login({ onLoginSuccess }) {
               </div>
             )}
 
+          </div>
+        </div>
+      )}
+
+      {/* REGISTRATION SUCCESS CELEBRATION MODAL */}
+      {regSuccessData && (
+        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white border-2 border-emerald-500 p-6 sm:p-8 max-w-md w-full text-center shadow-2xl">
+            <div className="w-16 h-16 bg-emerald-100 text-emerald-700 mx-auto flex items-center justify-center rounded-full mb-4">
+              <CheckCircle2 className="w-10 h-10 text-emerald-600" />
+            </div>
+            <h2 className="text-xl font-extrabold text-slate-900 mb-1 uppercase tracking-tight">
+              Registration Successful!
+            </h2>
+            <p className="text-xs text-slate-600 mb-4">
+              Your College ID & Device have been permanently bound to the database.
+            </p>
+
+            <div className="p-3.5 bg-slate-50 border border-slate-200 text-left text-xs space-y-1.5 mb-6">
+              <div className="flex justify-between">
+                <span className="text-slate-500">Student:</span>
+                <span className="font-bold text-slate-900">{regSuccessData.student.name}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Roll No & Div:</span>
+                <span className="font-bold text-slate-900">Roll {regSuccessData.student.rollNo} ({regSuccessData.student.division})</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Department:</span>
+                <span className="font-bold text-slate-900">{regSuccessData.student.department.toUpperCase()}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Device Lock:</span>
+                <span className="font-bold text-emerald-700">🔒 Bound Permanently</span>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => onLoginSuccess('student', regSuccessData.student, regSuccessData.meta)}
+              className="w-full py-3.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs uppercase tracking-wider flex items-center justify-center space-x-2 transition cursor-pointer"
+            >
+              <span>Enter Student Portal Now</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
           </div>
         </div>
       )}

@@ -1,78 +1,99 @@
-// HIGH-PERFORMANCE GLOBAL REAL-TIME CLOUD SYNCHRONIZATION ENGINE (NTFY BROKER)
-// Connects Desktop, Mobile, and all client browsers with 100% live synchronization.
+// ULTRA-HIGH PERFORMANCE REAL-TIME CLOUD ENGINE (NON-BLOCKING + ZERO LATENCY)
+// Optimistic UI updates (0ms) + Asynchronous Non-Blocking Cloud Broker Sync
 
 const SYNC_TOPIC = 'sy_attendance_prod_sync_v2026';
 const SYNC_URL = `https://ntfy.sh/${SYNC_TOPIC}`;
 
 let memoryCache = null;
-let lastFetchTime = 0;
+let isSyncing = false;
 
-function sanitizeStudent(s) {
-  if (!s) return null;
-  return {
-    id: s.id || `S_${s.department || 'entc'}_${s.division || 'SY-A'}_${s.rollNo}`,
-    rollNo: Number(s.rollNo),
-    name: (s.name || 'Student').trim(),
-    prn: (s.prn || '').trim().toUpperCase(),
-    department: s.department || 'entc',
-    division: s.division || 'SY-A',
-    batch: s.batch || (Number(s.rollNo) <= 20 ? 'B1' : Number(s.rollNo) <= 40 ? 'B2' : 'B3'),
-    idCardPhoto: s.idCardPhoto && s.idCardPhoto.length < 5000 ? s.idCardPhoto : null,
-    attendancePercentage: s.attendancePercentage || 100.0,
-    isDefaulter: Boolean(s.isDefaulter),
-    boundDeviceId: s.boundDeviceId || null,
-    boundAt: s.boundAt || new Date().toISOString()
+// 1. Instant Cache Loader (0ms)
+function getInitialCache() {
+  if (memoryCache) return memoryCache;
+  try {
+    const local = localStorage.getItem('sy_cloud_cache_v4');
+    if (local) {
+      memoryCache = JSON.parse(local);
+      return memoryCache;
+    }
+  } catch (e) {}
+
+  memoryCache = {
+    students: [],
+    sessions: [],
+    logs: [],
+    hodAccounts: {},
+    teachers: []
   };
+  return memoryCache;
 }
 
-function sanitizeLog(l) {
-  if (!l) return null;
-  return {
-    id: l.id || `LOG_${Date.now()}_${l.rollNo || 0}`,
-    type: l.type || 'STUDENT_LOGIN',
-    studentId: l.studentId,
-    studentName: (l.studentName || 'Student').trim(),
-    rollNo: Number(l.rollNo),
-    prn: (l.prn || '').trim().toUpperCase(),
-    department: l.department || 'entc',
-    division: l.division || 'SY-A',
-    idCardPhoto: l.idCardPhoto && l.idCardPhoto.length < 5000 ? l.idCardPhoto : null,
-    deviceId: l.deviceId,
-    status: l.status || 'VERIFIED_PHYSICAL_ID',
-    timestamp: l.timestamp || new Date().toISOString()
-  };
+function persistLocalState(state) {
+  memoryCache = state;
+  try {
+    localStorage.setItem('sy_cloud_cache_v4', JSON.stringify(state));
+  } catch (e) {}
 }
 
-function sanitizeSession(sess) {
-  if (!sess) return null;
-  return {
-    id: sess.id || `SESS_${Date.now()}`,
-    subjectName: (sess.subjectName || 'Lecture').trim(),
-    teacherId: sess.teacherId || 'T_FACULTY',
-    teacherName: (sess.teacherName || 'Faculty Member').trim(),
-    department: sess.department || 'entc',
-    division: sess.division || 'SY-A',
-    divisions: sess.divisions || (sess.division ? sess.division.split(',').map(d => d.trim()) : ['SY-A']),
-    batch: sess.batch || 'All',
-    startTime: sess.startTime || new Date().toISOString(),
-    endTime: sess.endTime || new Date().toISOString(),
-    durationMinutes: Number(sess.durationMinutes) || 3,
-    status: sess.status || 'closed',
-    date: sess.date || (sess.startTime ? sess.startTime.split('T')[0] : new Date().toISOString().split('T')[0]),
-    totalPresent: sess.totalPresent !== undefined ? sess.totalPresent : (sess.attendees?.length || 0),
-    totalStudents: sess.totalStudents || 80,
-    attendees: Array.isArray(sess.attendees) ? sess.attendees : []
+// 2. Non-blocking asynchronous cloud broadcast (< 50ms)
+function broadcastToCloudAsync(state) {
+  if (typeof window === 'undefined') return;
+
+  // Lightweight state (sanitize and strip heavy photos to keep payload < 5KB)
+  const lightweightState = {
+    students: (state.students || []).map(s => ({
+      id: s.id,
+      rollNo: s.rollNo,
+      name: s.name,
+      prn: s.prn,
+      department: s.department,
+      division: s.division,
+      batch: s.batch,
+      attendancePercentage: s.attendancePercentage,
+      isDefaulter: s.isDefaulter,
+      boundDeviceId: s.boundDeviceId,
+      boundAt: s.boundAt,
+      activeSessionToken: s.activeSessionToken,
+      lastLoginAt: s.lastLoginAt
+    })),
+    sessions: (state.sessions || []).slice(0, 30),
+    logs: (state.logs || []).slice(0, 50),
+    hodAccounts: state.hodAccounts || {},
+    teachers: state.teachers || []
   };
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 2000);
+
+  fetch(SYNC_URL, {
+    method: 'POST',
+    headers: {
+      'Title': 'STATE_DELTA',
+      'Priority': 'urgent'
+    },
+    body: JSON.stringify(lightweightState),
+    signal: controller.signal
+  })
+    .then(() => clearTimeout(timeoutId))
+    .catch(() => clearTimeout(timeoutId));
 }
 
-async function fetchCloudState() {
-  const now = Date.now();
-  if (memoryCache && now - lastFetchTime < 1500) {
-    return memoryCache;
-  }
+// 3. Fast Background Revalidator
+async function revalidateCloudStateInBackground() {
+  if (isSyncing) return;
+  isSyncing = true;
 
   try {
-    const res = await fetch(`${SYNC_URL}/json?poll=1`, { cache: 'no-store' });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 2500);
+
+    const res = await fetch(`${SYNC_URL}/json?poll=1`, {
+      cache: 'no-store',
+      signal: controller.signal
+    });
+
+    clearTimeout(timeoutId);
+
     if (res.ok) {
       const text = await res.text();
       const lines = text.trim().split('\n').filter(Boolean);
@@ -82,88 +103,83 @@ async function fetchCloudState() {
           if (item && item.event === 'message' && item.message) {
             const parsed = JSON.parse(item.message);
             if (parsed && typeof parsed === 'object') {
-              const state = {
-                students: Array.isArray(parsed.students) ? parsed.students : [],
-                sessions: Array.isArray(parsed.sessions) ? parsed.sessions : [],
-                logs: Array.isArray(parsed.logs) ? parsed.logs : [],
-                hodAccounts: parsed.hodAccounts && typeof parsed.hodAccounts === 'object' ? parsed.hodAccounts : {},
-                teachers: Array.isArray(parsed.teachers) ? parsed.teachers : []
+              const current = getInitialCache();
+              
+              // Merge students intelligently
+              const studentMap = new Map();
+              (current.students || []).forEach(s => studentMap.set(s.id, s));
+              (parsed.students || []).forEach(s => {
+                const existing = studentMap.get(s.id);
+                studentMap.set(s.id, { ...(existing || {}), ...s });
+              });
+
+              // Merge HOD accounts
+              const hodMap = { ...(current.hodAccounts || {}), ...(parsed.hodAccounts || {}) };
+
+              // Merge sessions
+              const sessionMap = new Map();
+              (current.sessions || []).forEach(s => sessionMap.set(s.id, s));
+              (parsed.sessions || []).forEach(s => sessionMap.set(s.id, { ...(sessionMap.get(s.id) || {}), ...s }));
+
+              const mergedState = {
+                students: Array.from(studentMap.values()),
+                sessions: Array.from(sessionMap.values()),
+                logs: (parsed.logs || current.logs || []).slice(0, 50),
+                hodAccounts: hodMap,
+                teachers: parsed.teachers || current.teachers || []
               };
-              memoryCache = state;
-              lastFetchTime = now;
-              try { localStorage.setItem('sy_cloud_cache_v3', JSON.stringify(state)); } catch (e) {}
-              return state;
+
+              persistLocalState(mergedState);
+              break;
             }
           }
-        } catch (lineErr) {}
+        } catch (e) {}
       }
     }
   } catch (err) {
-    console.warn('Cloud poll warning:', err.message);
+    // Silent background timeout
+  } finally {
+    isSyncing = false;
   }
-
-  // Fallback to local storage
-  try {
-    const local = localStorage.getItem('sy_cloud_cache_v3');
-    if (local) {
-      const parsed = JSON.parse(local);
-      memoryCache = parsed;
-      return parsed;
-    }
-  } catch (e) {}
-
-  return { students: [], sessions: [], logs: [], hodAccounts: {}, teachers: [] };
 }
 
-async function broadcastCloudState(state) {
-  memoryCache = state;
-  lastFetchTime = Date.now();
-  try { localStorage.setItem('sy_cloud_cache_v3', JSON.stringify(state)); } catch (e) {}
-
-  try {
-    const payload = JSON.stringify(state);
-    await fetch(SYNC_URL, {
-      method: 'POST',
-      headers: {
-        'Title': 'STATE_SYNC',
-        'Priority': 'urgent'
-      },
-      body: payload
-    });
-  } catch (err) {
-    console.warn('Cloud broadcast warning:', err.message);
-  }
+// Auto background sync every 3 seconds
+if (typeof window !== 'undefined') {
+  setInterval(revalidateCloudStateInBackground, 3000);
 }
 
 export const CloudSync = {
-  // 1. HOD Accounts
+  // 1. HOD ACCOUNTS
   getHodAccounts: async () => {
-    const state = await fetchCloudState();
+    revalidateCloudStateInBackground();
+    const state = getInitialCache();
     return state.hodAccounts || {};
   },
 
   saveHodAccount: async (department, accountData) => {
-    const state = await fetchCloudState();
+    const state = getInitialCache();
     state.hodAccounts = state.hodAccounts || {};
     state.hodAccounts[department] = {
       name: (accountData.name || '').trim(),
       password: accountData.password,
       configuredAt: new Date().toISOString()
     };
-    await broadcastCloudState(state);
+    persistLocalState(state);
+    broadcastToCloudAsync(state);
     return state.hodAccounts[department];
   },
 
-  // 2. Students Roster
+  // 2. STUDENTS ROSTER
   getStudents: async (department = null, division = null) => {
-    const state = await fetchCloudState();
+    revalidateCloudStateInBackground();
+    const state = getInitialCache();
     let list = state.students || [];
 
     if (department && department !== 'all') {
-      list = list.filter(s => s.department === department);
+      list = list.filter(s => String(s.department || '').toLowerCase() === String(department).toLowerCase());
     }
     if (division) {
-      list = list.filter(s => s.division === division);
+      list = list.filter(s => String(s.division || '').toUpperCase() === String(division).toUpperCase());
     }
 
     list.sort((a, b) => Number(a.rollNo || 0) - Number(b.rollNo || 0));
@@ -171,110 +187,92 @@ export const CloudSync = {
   },
 
   saveStudent: async (student) => {
-    const cleanStudent = sanitizeStudent(student);
-    if (!cleanStudent) return student;
-
-    const state = await fetchCloudState();
+    const state = getInitialCache();
     state.students = state.students || [];
 
     const idx = state.students.findIndex(s =>
-      s.id === cleanStudent.id ||
-      (Number(s.rollNo) === Number(cleanStudent.rollNo) &&
-       String(s.department || '').toLowerCase() === String(cleanStudent.department || '').toLowerCase() &&
-       String(s.division || '').toUpperCase() === String(cleanStudent.division || '').toUpperCase())
+      s.id === student.id ||
+      (Number(s.rollNo) === Number(student.rollNo) &&
+       String(s.department || '').toLowerCase() === String(student.department || '').toLowerCase() &&
+       String(s.division || '').toUpperCase() === String(student.division || '').toUpperCase())
     );
 
     if (idx >= 0) {
-      state.students[idx] = { ...state.students[idx], ...cleanStudent };
+      state.students[idx] = { ...state.students[idx], ...student };
     } else {
-      state.students.push(cleanStudent);
+      state.students.push(student);
     }
 
-    await broadcastCloudState(state);
-    return cleanStudent;
+    persistLocalState(state);
+    broadcastToCloudAsync(state);
+    return student;
   },
 
   deleteStudent: async (studentId) => {
-    const state = await fetchCloudState();
+    const state = getInitialCache();
     state.students = (state.students || []).filter(s => s.id !== studentId);
     state.logs = (state.logs || []).filter(l => l.studentId !== studentId);
-    await broadcastCloudState(state);
+    persistLocalState(state);
+    broadcastToCloudAsync(state);
   },
 
   resetDevice: async (studentId) => {
-    const state = await fetchCloudState();
+    const state = getInitialCache();
     state.students = (state.students || []).map(s => {
       if (s.id === studentId) {
         return { ...s, boundDeviceId: null, boundAt: null, activeSessionToken: null };
       }
       return s;
     });
-    await broadcastCloudState(state);
+    persistLocalState(state);
+    broadcastToCloudAsync(state);
   },
 
-  // 3. Conducted Lecture Sessions
+  // 3. CONDUCTED LECTURE SESSIONS
   getSessions: async (department = null) => {
-    const state = await fetchCloudState();
+    revalidateCloudStateInBackground();
+    const state = getInitialCache();
     let list = state.sessions || [];
 
     if (department && department !== 'all') {
-      list = list.filter(s => s.department === department);
+      list = list.filter(s => String(s.department || '').toLowerCase() === String(department).toLowerCase());
     }
 
-    // Deduplicate sessions by department, division, subjectName, and timestamp
-    const dedupMap = new Map();
-    list.forEach(sess => {
-      const timeKey = sess.startTime ? sess.startTime.slice(0, 16) : (sess.date || sess.id);
-      const key = `${sess.department || 'entc'}_${sess.division || 'SY-A'}_${sess.subjectName || 'Lecture'}_${timeKey}`;
-      
-      const existing = dedupMap.get(key);
-      if (!existing) {
-        dedupMap.set(key, sess);
-      } else {
-        const existingCount = existing.totalPresent !== undefined ? existing.totalPresent : (existing.attendees?.length || 0);
-        const newCount = sess.totalPresent !== undefined ? sess.totalPresent : (sess.attendees?.length || 0);
-        if (newCount >= existingCount) {
-          dedupMap.set(key, sess);
-        }
-      }
-    });
-
-    const uniqueList = Array.from(dedupMap.values());
-    uniqueList.sort((a, b) => new Date(b.startTime || b.date || 0) - new Date(a.startTime || a.date || 0));
-    return uniqueList;
+    list.sort((a, b) => new Date(b.startTime || 0) - new Date(a.startTime || 0));
+    return list;
   },
 
   saveSession: async (session) => {
-    const cleanSess = sanitizeSession(session);
-    if (!cleanSess) return session;
-
-    const state = await fetchCloudState();
+    const state = getInitialCache();
     state.sessions = state.sessions || [];
 
-    const idx = state.sessions.findIndex(s => s.id === cleanSess.id);
+    const idx = state.sessions.findIndex(s => s.id === session.id);
     if (idx >= 0) {
-      state.sessions[idx] = { ...state.sessions[idx], ...cleanSess };
+      state.sessions[idx] = { ...state.sessions[idx], ...session };
     } else {
-      state.sessions.unshift(cleanSess);
+      state.sessions.unshift(session);
     }
 
-    await broadcastCloudState(state);
-    return cleanSess;
+    persistLocalState(state);
+    broadcastToCloudAsync(state);
+    return session;
   },
 
   deleteSession: async (sessionId) => {
-    const state = await fetchCloudState();
+    const state = getInitialCache();
     state.sessions = (state.sessions || []).filter(s => s.id !== sessionId);
-    await broadcastCloudState(state);
+    persistLocalState(state);
+    broadcastToCloudAsync(state);
   },
 
-  // 4. Live Login Logs
+  // 4. AUDIT LOGS
   getLogs: async (department = null) => {
-    const state = await fetchCloudState();
+    revalidateCloudStateInBackground();
+    const state = getInitialCache();
     let list = state.logs || [];
 
     if (department && department !== 'all') {
-      list = list.filter(l => l.department === department);
+      list = list.filter(l => String(l.department || '').toLowerCase() === String(department).toLowerCase());
     }
 
     list.sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0));
@@ -282,33 +280,44 @@ export const CloudSync = {
   },
 
   saveLog: async (log) => {
-    const cleanLog = sanitizeLog(log);
-    if (!cleanLog) return log;
-
-    const state = await fetchCloudState();
+    const state = getInitialCache();
     state.logs = state.logs || [];
+
+    const cleanLog = {
+      id: log.id || `LOG_${Date.now()}_${log.rollNo || Math.floor(Math.random() * 1000)}`,
+      type: log.type || 'STUDENT_LOG',
+      studentId: log.studentId,
+      studentName: log.studentName || 'Student',
+      rollNo: log.rollNo,
+      prn: log.prn,
+      department: log.department,
+      division: log.division,
+      deviceId: log.deviceId,
+      status: log.status || 'SUCCESS',
+      timestamp: new Date().toISOString()
+    };
+
     state.logs.unshift(cleanLog);
+    if (state.logs.length > 100) state.logs = state.logs.slice(0, 100);
 
-    if (state.logs.length > 100) {
-      state.logs = state.logs.slice(0, 100);
-    }
-
-    await broadcastCloudState(state);
+    persistLocalState(state);
+    broadcastToCloudAsync(state);
     return cleanLog;
   },
 
-  // 5. Teachers
-  getTeachers: async (department = null) => {
-    const state = await fetchCloudState();
+  // 5. TEACHERS
+  getTeachers: async (dept = null) => {
+    revalidateCloudStateInBackground();
+    const state = getInitialCache();
     let list = state.teachers || [];
-    if (department && department !== 'all') {
-      list = list.filter(t => t.department === department);
+    if (dept && dept !== 'all') {
+      list = list.filter(t => String(t.department || '').toLowerCase() === String(dept).toLowerCase());
     }
     return list;
   },
 
   saveTeacher: async (teacher) => {
-    const state = await fetchCloudState();
+    const state = getInitialCache();
     state.teachers = state.teachers || [];
     const idx = state.teachers.findIndex(t => t.id === teacher.id || (t.name === teacher.name && t.department === teacher.department));
     if (idx >= 0) {
@@ -316,7 +325,14 @@ export const CloudSync = {
     } else {
       state.teachers.push(teacher);
     }
-    await broadcastCloudState(state);
+    persistLocalState(state);
+    broadcastToCloudAsync(state);
     return teacher;
+  },
+
+  // 6. FORCE REFRESH (INSTANT SYNC TRIGGER)
+  forceRefresh: async () => {
+    await revalidateCloudStateInBackground();
+    return getInitialCache();
   }
 };

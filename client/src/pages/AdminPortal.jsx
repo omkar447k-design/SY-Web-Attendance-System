@@ -265,11 +265,20 @@ export function AdminPortal({ hodProfile, onLaunchLectureAsHod }) {
           </button>
 
           <button
-            onClick={loadData}
-            className="p-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 transition touch-target flex items-center justify-center flex-shrink-0"
-            title="Refresh Data"
+            onClick={async () => {
+              setLoading(true);
+              try {
+                await api.getAdminStats(currentDept);
+                await loadData();
+              } finally {
+                setLoading(false);
+              }
+            }}
+            className="flex items-center space-x-1.5 px-3 py-2 bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 transition touch-target text-xs font-bold flex-shrink-0"
+            title="Fast Sync Cloud Database"
           >
-            <RefreshCw className="w-3.5 h-3.5" />
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-sky-600' : 'text-slate-600'}`} />
+            <span>Fast Sync</span>
           </button>
         </div>
       </div>
