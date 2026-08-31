@@ -66,9 +66,9 @@ export function AdminPortal({ hodProfile, onLaunchLectureAsHod }) {
       ]);
 
       if (statsRes.success) setStats(statsRes.data);
-      if (studRes.success) setStudents(studRes.data || []);
+      if (studRes.success) setStudents(Array.isArray(studRes.data) ? studRes.data : []);
       if (teachRes.success) {
-        setTeachers(teachRes.data.filter(t => t.department === currentDept));
+        setTeachers(Array.isArray(teachRes.data) ? teachRes.data.filter(t => t.department === currentDept) : []);
       }
       if (setRes.success) setSettings(setRes.data);
       if (logsRes.success) setLoginLogs(logsRes.data || []);
