@@ -1,4 +1,4 @@
-const SYNC_TOPIC = 'sy_attendance_prod_sync_v2026_fresh_v9';
+const SYNC_TOPIC = 'sy_attendance_prod_sync_v2026_clean_v10';
 const SYNC_URL = `https://ntfy.sh/${SYNC_TOPIC}`;
 
 let memoryCache = null;
@@ -9,32 +9,43 @@ let deletedStudentIds = new Set();
 let deletedSessionIds = new Set();
 let deletedTeacherIds = new Set();
 
-// Restore persisted deletion tombstones (v6)
+// Restore persisted deletion tombstones (v7)
 try {
-  const ds = localStorage.getItem('sy_deleted_students_v6');
+  const ds = localStorage.getItem('sy_deleted_students_v7');
   if (ds) deletedStudentIds = new Set(JSON.parse(ds));
 } catch (e) {}
 try {
-  const dl = localStorage.getItem('sy_deleted_sessions_v6');
+  const dl = localStorage.getItem('sy_deleted_sessions_v7');
   if (dl) deletedSessionIds = new Set(JSON.parse(dl));
 } catch (e) {}
 try {
-  const dt = localStorage.getItem('sy_deleted_teachers_v6');
+  const dt = localStorage.getItem('sy_deleted_teachers_v7');
   if (dt) deletedTeacherIds = new Set(JSON.parse(dt));
 } catch (e) {}
 
 function persistDeletionTombstones() {
   try {
-    localStorage.setItem('sy_deleted_students_v6', JSON.stringify([...deletedStudentIds]));
-    localStorage.setItem('sy_deleted_sessions_v6', JSON.stringify([...deletedSessionIds]));
-    localStorage.setItem('sy_deleted_teachers_v6', JSON.stringify([...deletedTeacherIds]));
+    localStorage.setItem('sy_deleted_students_v7', JSON.stringify([...deletedStudentIds]));
+    localStorage.setItem('sy_deleted_sessions_v7', JSON.stringify([...deletedSessionIds]));
+    localStorage.setItem('sy_deleted_teachers_v7', JSON.stringify([...deletedTeacherIds]));
   } catch (e) {}
+}
+
+function isStudentDeleted(s) {
+  if (!s) return true;
+  if (s.id && deletedStudentIds.has(s.id)) return true;
+  const cleanDept = String(s.department || '').toLowerCase();
+  const cleanDiv = String(s.division || 'SY-A').toUpperCase();
+  const canonicalKey = `S_${cleanDept}_${cleanDiv}_${s.rollNo}`;
+  if (deletedStudentIds.has(canonicalKey)) return true;
+  if (s.prn && deletedStudentIds.has(String(s.prn).toUpperCase())) return true;
+  return false;
 }
 
 // 1. Live State Loader — cleans previous student records while preserving teachers and HOD accounts
 function getInitialCache() {
   try {
-    const local = localStorage.getItem('sy_cloud_cache_v9');
+    const local = localStorage.getItem('sy_cloud_cache_v10');
     if (local) {
       memoryCache = JSON.parse(local);
       return memoryCache;
@@ -43,7 +54,7 @@ function getInitialCache() {
     // Extract ONLY teachers and HOD accounts from any previous versions
     let preservedTeachers = [];
     let preservedHod = {};
-    const oldKeys = ['sy_cloud_cache_v8', 'sy_cloud_cache_v7', 'sy_cloud_cache_v6', 'sy_cloud_cache_v5'];
+    const oldKeys = ['sy_cloud_cache_v9', 'sy_cloud_cache_v8', 'sy_cloud_cache_v7', 'sy_cloud_cache_v6', 'sy_cloud_cache_v5'];
     for (const k of oldKeys) {
       try {
         const val = localStorage.getItem(k);
@@ -88,7 +99,7 @@ function getInitialCache() {
 function persistLocalState(state) {
   memoryCache = state;
   try {
-    localStorage.setItem('sy_cloud_cache_v9', JSON.stringify(state));
+    localStorage.setItem('sy_cloud_cache_v10', JSON.stringify(state));
   } catch (e) {}
 }
 
@@ -98,7 +109,7 @@ function broadcastToCloudAsync(state) {
 
   // Lightweight state (sanitize and strip heavy photos to keep payload < 5KB)
   const lightweightState = {
-    students: (state.students || []).map(s => ({
+    students: (state.students || []).filter(s => !isStudentDeleted(s)).map(s => ({
       id: s.id,
       rollNo: s.rollNo,
       name: s.name,
@@ -173,16 +184,16 @@ async function revalidateCloudStateInBackground() {
             if (parsed && typeof parsed === 'object') {
               const current = getInitialCache();
               
-              // Merge students intelligently — but NEVER resurrect deleted ones
+              // Merge students intelligently — NEVER resurrect deleted ones
               const studentMap = new Map();
               (current.students || []).forEach(s => {
-                if (s && !deletedStudentIds.has(s.id)) {
+                if (s && !isStudentDeleted(s)) {
                   const key = s.id || `S_${String(s.department || '').toLowerCase()}_${String(s.division || 'SY-A').toUpperCase()}_${s.rollNo}`;
                   studentMap.set(key, s);
                 }
               });
               (parsed.students || []).forEach(s => {
-                if (s && !deletedStudentIds.has(s.id)) {
+                if (s && !isStudentDeleted(s)) {
                   const key = s.id || `S_${String(s.department || '').toLowerCase()}_${String(s.division || 'SY-A').toUpperCase()}_${s.rollNo}`;
                   const existing = studentMap.get(key);
                   studentMap.set(key, { ...(existing || {}), ...s });
@@ -318,20 +329,22 @@ export const CloudSync = {
   },
 
   deleteStudent: async (studentId) => {
-    deletedStudentIds.add(studentId);
-
     const state = getInitialCache();
-    const targetStudent = (state.students || []).find(s => s.id === studentId);
+    const targetStudent = (state.students || []).find(s => s.id === studentId || String(s.rollNo) === String(studentId));
+
+    deletedStudentIds.add(studentId);
     if (targetStudent) {
+      deletedStudentIds.add(targetStudent.id);
       const canonicalKey = `S_${String(targetStudent.department || '').toLowerCase()}_${String(targetStudent.division || 'SY-A').toUpperCase()}_${targetStudent.rollNo}`;
       deletedStudentIds.add(canonicalKey);
+      if (targetStudent.prn) deletedStudentIds.add(String(targetStudent.prn).toUpperCase());
     }
     persistDeletionTombstones();
 
-    state.students = (state.students || []).filter(s => s.id !== studentId && (!targetStudent || s.id !== targetStudent.id));
+    state.students = (state.students || []).filter(s => !isStudentDeleted(s) && s.id !== studentId);
     state.logs = (state.logs || []).filter(l => l.studentId !== studentId && (!targetStudent || (Number(l.rollNo) !== Number(targetStudent.rollNo) || String(l.division).toUpperCase() !== String(targetStudent.division).toUpperCase())));
     
-    // Also purge from all session attendees
+    // Purge from all session attendees
     state.sessions = (state.sessions || []).map(sess => {
       const remainingAttendees = (sess.attendees || []).filter(a => a.studentId !== studentId && (!targetStudent || Number(a.rollNo) !== Number(targetStudent.rollNo)));
       return {
