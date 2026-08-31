@@ -552,11 +552,19 @@ export const api = {
   },
 
   verifyStudentSession: async (studentId, sessionToken) => {
-    const students = await CloudSync.getStudents();
-    const student = students.find(s => s.id === studentId);
-    if (!student) return { valid: false, reason: 'Student removed from database' };
-    if (!student.activeSessionToken) return { valid: true };
-    return { valid: student.activeSessionToken === sessionToken };
+    try {
+      const students = await CloudSync.getStudents();
+      const student = students.find(s => s.id === studentId || String(s.rollNo) === String(studentId));
+      // Only invalidate if the student record definitely exists and has a conflicting new session token
+      if (student && student.activeSessionToken && sessionToken) {
+        if (student.activeSessionToken !== sessionToken) {
+          return { valid: false, reason: 'Active session transferred to another device' };
+        }
+      }
+      return { valid: true };
+    } catch (e) {
+      return { valid: true };
+    }
   },
 
   getStudentActiveSession: async (division, studentId, department) => {
