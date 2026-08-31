@@ -64,43 +64,14 @@ export function AdminPortal({ hodProfile, onLaunchLectureAsHod }) {
         api.getConductedLectures(currentDept)
       ]);
 
-      if (statsRes.success) setStats(prev => {
-        const next = statsRes.data;
-        if (JSON.stringify(prev) === JSON.stringify(next)) return prev;
-        return next;
-      });
-
-      if (studRes.success) {
-        const nextStudents = Array.isArray(studRes.data) ? studRes.data : [];
-        setStudents(prev => {
-          if (prev.length === nextStudents.length && JSON.stringify(prev.map(s=>s.id)) === JSON.stringify(nextStudents.map(s=>s.id))) return prev;
-          return nextStudents;
-        });
-      }
-
+      if (statsRes.success) setStats(statsRes.data);
+      if (studRes.success) setStudents(Array.isArray(studRes.data) ? studRes.data : []);
       if (teachRes.success) {
         const deptTeachers = Array.isArray(teachRes.data) ? teachRes.data.filter(t => t.department === currentDept) : [];
-        setTeachers(prev => {
-          if (prev.length === deptTeachers.length && JSON.stringify(prev.map(t=>t.id)) === JSON.stringify(deptTeachers.map(t=>t.id))) return prev;
-          return deptTeachers;
-        });
+        setTeachers(deptTeachers);
       }
-
-      if (logsRes.success) {
-        const nextLogs = logsRes.data || [];
-        setLoginLogs(prev => {
-          if (prev.length === nextLogs.length) return prev;
-          return nextLogs;
-        });
-      }
-
-      if (lectRes.success) {
-        const nextLectures = lectRes.data || [];
-        setConductedLectures(prev => {
-          if (prev.length === nextLectures.length && JSON.stringify(prev.map(l=>l.id)) === JSON.stringify(nextLectures.map(l=>l.id))) return prev;
-          return nextLectures;
-        });
-      }
+      if (logsRes.success) setLoginLogs(logsRes.data || []);
+      if (lectRes.success) setConductedLectures(lectRes.data || []);
     } catch (err) {
       console.warn('Admin portal data refresh:', err.message);
     } finally {

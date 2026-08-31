@@ -147,12 +147,16 @@ async function revalidateCloudStateInBackground() {
               // Merge students intelligently — but NEVER resurrect deleted ones
               const studentMap = new Map();
               (current.students || []).forEach(s => {
-                if (!deletedStudentIds.has(s.id)) studentMap.set(s.id, s);
+                if (s && !deletedStudentIds.has(s.id)) {
+                  const key = s.id || `S_${String(s.department || '').toLowerCase()}_${String(s.division || 'SY-A').toUpperCase()}_${s.rollNo}`;
+                  studentMap.set(key, s);
+                }
               });
               (parsed.students || []).forEach(s => {
-                if (!deletedStudentIds.has(s.id)) {
-                  const existing = studentMap.get(s.id);
-                  studentMap.set(s.id, { ...(existing || {}), ...s });
+                if (s && !deletedStudentIds.has(s.id)) {
+                  const key = s.id || `S_${String(s.department || '').toLowerCase()}_${String(s.division || 'SY-A').toUpperCase()}_${s.rollNo}`;
+                  const existing = studentMap.get(key);
+                  studentMap.set(key, { ...(existing || {}), ...s });
                 }
               });
 
@@ -162,10 +166,10 @@ async function revalidateCloudStateInBackground() {
               // Merge sessions — but NEVER resurrect deleted ones
               const sessionMap = new Map();
               (current.sessions || []).forEach(s => {
-                if (!deletedSessionIds.has(s.id)) sessionMap.set(s.id, s);
+                if (s && !deletedSessionIds.has(s.id)) sessionMap.set(s.id, s);
               });
               (parsed.sessions || []).forEach(s => {
-                if (!deletedSessionIds.has(s.id)) {
+                if (s && !deletedSessionIds.has(s.id)) {
                   sessionMap.set(s.id, { ...(sessionMap.get(s.id) || {}), ...s });
                 }
               });
@@ -173,10 +177,10 @@ async function revalidateCloudStateInBackground() {
               // Merge teachers — but NEVER resurrect deleted ones
               const teacherMap = new Map();
               (current.teachers || []).forEach(t => {
-                if (!deletedTeacherIds.has(t.id)) teacherMap.set(t.id, t);
+                if (t && !deletedTeacherIds.has(t.id)) teacherMap.set(t.id, t);
               });
               (parsed.teachers || []).forEach(t => {
-                if (!deletedTeacherIds.has(t.id)) {
+                if (t && !deletedTeacherIds.has(t.id)) {
                   const existing = teacherMap.get(t.id);
                   teacherMap.set(t.id, { ...(existing || {}), ...t });
                 }
@@ -185,7 +189,7 @@ async function revalidateCloudStateInBackground() {
               const mergedState = {
                 students: Array.from(studentMap.values()),
                 sessions: Array.from(sessionMap.values()),
-                logs: (parsed.logs || current.logs || []).filter(l => !deletedStudentIds.has(l.studentId)).slice(0, 500),
+                logs: (parsed.logs || current.logs || []).filter(l => l && !deletedStudentIds.has(l.studentId)).slice(0, 500),
                 hodAccounts: hodMap,
                 teachers: Array.from(teacherMap.values())
               };
@@ -230,17 +234,19 @@ export const CloudSync = {
     return state.hodAccounts[department];
   },
 
-  // 2. STUDENTS ROSTER
+  // 2. STUDENTS ROSTER (STRICT DIVISION & DEPARTMENT ISOLATION)
   getStudents: async (department = null, division = null) => {
     revalidateCloudStateInBackground();
     const state = getInitialCache();
     let list = state.students || [];
 
     if (department && department !== 'all') {
-      list = list.filter(s => String(s.department || '').toLowerCase() === String(department).toLowerCase());
+      const cleanDept = String(department).toLowerCase();
+      list = list.filter(s => String(s.department || '').toLowerCase() === cleanDept);
     }
-    if (division) {
-      list = list.filter(s => String(s.division || '').toUpperCase() === String(division).toUpperCase());
+    if (division && division !== 'all') {
+      const cleanDiv = String(division).toUpperCase();
+      list = list.filter(s => String(s.division || '').toUpperCase() === cleanDiv);
     }
 
     list.sort((a, b) => Number(a.rollNo || 0) - Number(b.rollNo || 0));
@@ -251,22 +257,35 @@ export const CloudSync = {
     const state = getInitialCache();
     state.students = state.students || [];
 
+    const canonicalDept = String(student.department || 'entc').toLowerCase();
+    const canonicalDiv = String(student.division || 'SY-A').toUpperCase();
+    const canonicalRoll = Number(student.rollNo);
+    const canonicalId = student.id || `S_${canonicalDept}_${canonicalDiv}_${canonicalRoll}`;
+
+    const cleanStudent = {
+      ...student,
+      id: canonicalId,
+      department: canonicalDept,
+      division: canonicalDiv,
+      rollNo: canonicalRoll
+    };
+
     const idx = state.students.findIndex(s =>
-      s.id === student.id ||
-      (Number(s.rollNo) === Number(student.rollNo) &&
-       String(s.department || '').toLowerCase() === String(student.department || '').toLowerCase() &&
-       String(s.division || '').toUpperCase() === String(student.division || '').toUpperCase())
+      s.id === canonicalId ||
+      (Number(s.rollNo) === canonicalRoll &&
+       String(s.department || '').toLowerCase() === canonicalDept &&
+       String(s.division || '').toUpperCase() === canonicalDiv)
     );
 
     if (idx >= 0) {
-      state.students[idx] = { ...state.students[idx], ...student };
+      state.students[idx] = { ...state.students[idx], ...cleanStudent };
     } else {
-      state.students.push(student);
+      state.students.push(cleanStudent);
     }
 
     persistLocalState(state);
     broadcastToCloudAsync(state);
-    return student;
+    return cleanStudent;
   },
 
   deleteStudent: async (studentId) => {

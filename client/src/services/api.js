@@ -287,7 +287,28 @@ export const api = {
     return api.teacherLogin(data);
   },
   checkTeacherStatus: (data) => request('/api/teacher/check-status', { method: 'POST', body: JSON.stringify(data) }),
-  getTeacherActiveSession: (teacherId) => request(`/api/teacher/session/active${teacherId ? `?teacherId=${teacherId}` : ''}`),
+  getTeacherActiveSession: async (teacherId) => {
+    const sessions = await CloudSync.getSessions();
+    const now = Date.now();
+    const active = sessions.find(s => 
+      s.status === 'active' && 
+      (!teacherId || s.teacherId === teacherId) &&
+      new Date(s.endTime).getTime() > now
+    );
+    if (active) {
+      const remainingSec = Math.max(0, Math.ceil((new Date(active.endTime).getTime() - now) / 1000));
+      return {
+        success: true,
+        active: true,
+        session: {
+          ...active,
+          remainingSessionSec: remainingSec
+        }
+      };
+    }
+    return { success: true, active: false, session: null };
+  },
+
   startSession: async (data) => {
     const selectedDivs = data.divisions && data.divisions.length > 0 ? data.divisions : [data.division || 'SY-A'];
     
@@ -328,12 +349,7 @@ export const api = {
       attendees: []
     };
 
-    try {
-      const res = await request('/api/teacher/session/start', { method: 'POST', body: JSON.stringify(data) });
-      if (res.success && res.session) {
-        return res;
-      }
-    } catch (e) {}
+    await CloudSync.saveSession(newSession);
 
     return {
       success: true,
@@ -344,7 +360,19 @@ export const api = {
       }
     };
   },
-  extendSession: (sessionId, extraMinutes = 1) => request('/api/teacher/session/extend', { method: 'POST', body: JSON.stringify({ sessionId, extraMinutes }) }),
+
+  extendSession: async (sessionId, extraMinutes = 1) => {
+    const sessions = await CloudSync.getSessions();
+    const target = sessions.find(s => s.id === sessionId);
+    if (target) {
+      const currentEnd = new Date(target.endTime).getTime();
+      target.endTime = new Date(currentEnd + extraMinutes * 60 * 1000).toISOString();
+      target.durationMinutes = (Number(target.durationMinutes) || 3) + extraMinutes;
+      await CloudSync.saveSession(target);
+    }
+    return { success: true, message: 'Session extended' };
+  },
+
   endSession: async (sessionId, sessionData) => {
     if (sessionData) {
       await CloudSync.saveSession({
@@ -352,13 +380,38 @@ export const api = {
         status: 'closed',
         endTime: new Date().toISOString()
       });
+    } else {
+      const sessions = await CloudSync.getSessions();
+      const target = sessions.find(s => s.id === sessionId);
+      if (target) {
+        target.status = 'closed';
+        target.endTime = new Date().toISOString();
+        await CloudSync.saveSession(target);
+      }
     }
-    try {
-      await request('/api/teacher/session/end', { method: 'POST', body: JSON.stringify({ sessionId }) });
-    } catch (e) {}
     return { success: true, message: 'Session concluded' };
   },
-  manualMarkAttendance: (sessionId, rollNo) => request('/api/teacher/session/manual-mark', { method: 'POST', body: JSON.stringify({ sessionId, rollNo }) }),
+
+  manualMarkAttendance: async (sessionId, rollNo) => {
+    const sessions = await CloudSync.getSessions();
+    const target = sessions.find(s => s.id === sessionId);
+    if (target) {
+      target.attendees = target.attendees || [];
+      const rollNum = Number(rollNo);
+      if (!target.attendees.some(a => Number(a.rollNo) === rollNum)) {
+        target.attendees.push({
+          studentId: `S_${target.department}_${target.division}_${rollNum}`,
+          rollNo: rollNum,
+          name: `Roll No. ${rollNum}`,
+          timestamp: new Date().toISOString(),
+          status: 'Present (Manual)'
+        });
+        target.totalPresent = target.attendees.length;
+        await CloudSync.saveSession(target);
+      }
+    }
+    return { success: true, message: 'Attendance marked manually' };
+  },
   getSessionExcelUrl: (sessionId) => `${API_BASE}/api/teacher/session/${sessionId}/export`,
 
   // 1. STUDENT REGISTRATION (First-Time Binding & ID OCR)
@@ -482,24 +535,100 @@ export const api = {
     };
   },
 
-  getStudentActiveSession: (division, studentId, department) => request(`/api/student/session/active?division=${division || 'SY-A'}&studentId=${studentId || ''}&department=${department || 'comp'}`),
-  submitPin: async (data) => {
-    try {
-      const res = await request('/api/student/attendance/submit', { method: 'POST', body: JSON.stringify(data) });
-      if (res && res.success) return res;
-    } catch (e) {}
+  getStudentActiveSession: async (division, studentId, department) => {
+    const cleanDept = String(department || 'entc').toLowerCase();
+    const cleanDiv = String(division || 'SY-A').toUpperCase();
+    const sessions = await CloudSync.getSessions(cleanDept);
+    const now = Date.now();
 
-    await CloudSync.saveLog({
-      type: 'ATTENDANCE_MARKED',
-      studentName: data.studentName,
-      rollNo: data.rollNo,
-      prn: data.prn,
-      department: data.department,
-      division: data.division,
-      status: 'PRESENT'
+    // Strictly match active lecture conducted for student's department and division
+    const active = sessions.find(s => {
+      if (s.status !== 'active') return false;
+      if (new Date(s.endTime).getTime() <= now) return false;
+      const deptMatches = String(s.department || '').toLowerCase() === cleanDept;
+      if (!deptMatches) return false;
+
+      // Check if session includes student's division (e.g. ['SY-A'] or 'SY-A, SY-B')
+      if (Array.isArray(s.divisions)) {
+        return s.divisions.some(d => String(d).toUpperCase() === cleanDiv);
+      }
+      return String(s.division || '').toUpperCase().includes(cleanDiv);
     });
 
-    return { success: true, message: 'Attendance marked successfully!' };
+    if (active) {
+      const cleanRoll = String(studentId).replace(/[^0-9]/g, '');
+      const alreadyMarked = Array.isArray(active.attendees) && active.attendees.some(a => 
+        a.studentId === studentId || String(a.rollNo) === cleanRoll
+      );
+      return {
+        success: true,
+        hasActiveSession: true,
+        session: {
+          ...active,
+          alreadyMarked
+        }
+      };
+    }
+
+    return { success: true, hasActiveSession: false, session: null };
+  },
+
+  submitPin: async (data) => {
+    const cleanDept = String(data.department || 'entc').toLowerCase();
+    const cleanDiv = String(data.division || 'SY-A').toUpperCase();
+    const rollNum = Number(data.rollNo);
+
+    const sessions = await CloudSync.getSessions(cleanDept);
+    const session = sessions.find(s => s.id === data.sessionId);
+    if (!session) {
+      throw new Error('Lecture session not found or has concluded.');
+    }
+    if (session.status !== 'active' || new Date(session.endTime).getTime() <= Date.now()) {
+      throw new Error('Attendance session has expired.');
+    }
+
+    // Verify division eligibility
+    const isEligible = (Array.isArray(session.divisions) && session.divisions.some(d => String(d).toUpperCase() === cleanDiv)) ||
+      String(session.division || '').toUpperCase().includes(cleanDiv);
+
+    if (!isEligible) {
+      throw new Error(`🛑 Division Restriction: This lecture is only for Division ${session.division}. You belong to ${cleanDiv}.`);
+    }
+
+    session.attendees = session.attendees || [];
+    const already = session.attendees.some(a => Number(a.rollNo) === rollNum);
+    if (already) {
+      return { success: true, message: 'You have already marked attendance for this lecture.' };
+    }
+
+    const attendeeRecord = {
+      studentId: data.studentId || `S_${cleanDept}_${cleanDiv}_${rollNum}`,
+      rollNo: rollNum,
+      name: data.studentName || 'Student',
+      prn: data.prn || '',
+      department: cleanDept,
+      division: cleanDiv,
+      timestamp: new Date().toISOString(),
+      status: 'Present'
+    };
+
+    session.attendees.push(attendeeRecord);
+    session.totalPresent = session.attendees.length;
+
+    await CloudSync.saveSession(session);
+    await CloudSync.saveLog({
+      type: 'ATTENDANCE_MARKED',
+      studentId: attendeeRecord.studentId,
+      studentName: data.studentName,
+      rollNo: rollNum,
+      prn: data.prn,
+      department: cleanDept,
+      division: cleanDiv,
+      status: 'PRESENT',
+      timestamp: new Date().toISOString()
+    });
+
+    return { success: true, message: '✅ Attendance Marked Successfully!' };
   },
   getStudentDashboard: (studentId) => request(`/api/student/dashboard/${studentId}`)
 };
