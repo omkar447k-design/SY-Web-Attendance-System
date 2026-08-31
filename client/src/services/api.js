@@ -114,17 +114,7 @@ export const api = {
   },
 
   getLoginLogs: async (department) => {
-    let cloudLogs = await CloudSync.getLogs(department);
-    try {
-      const serverRes = await request(`/api/admin/logs?department=${department || 'entc'}`);
-      if (serverRes.success && Array.isArray(serverRes.data) && serverRes.data.length > 0) {
-        const map = new Map();
-        cloudLogs.forEach(l => map.set(l.id || `${l.rollNo}_${l.timestamp}`, l));
-        serverRes.data.forEach(l => map.set(l.id || `${l.rollNo}_${l.timestamp}`, { ...(map.get(l.id) || {}), ...l }));
-        cloudLogs = Array.from(map.values());
-      }
-    } catch (e) {}
-
+    const cloudLogs = await CloudSync.getLogs(department);
     cloudLogs.sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0));
     return { success: true, data: cloudLogs };
   },
@@ -160,18 +150,6 @@ export const api = {
 
   getStudents: async (params = {}) => {
     let cloudStudents = await CloudSync.getStudents(params.department, params.division);
-    try {
-      const serverRes = await request(`/api/admin/students?department=${params.department || 'entc'}&division=${params.division || ''}`);
-      if (serverRes.success && Array.isArray(serverRes.data) && serverRes.data.length > 0) {
-        const map = new Map();
-        cloudStudents.forEach(s => map.set(`${s.department}_${s.division}_${s.rollNo}`, s));
-        serverRes.data.forEach(s => {
-          const key = `${s.department}_${s.division}_${s.rollNo}`;
-          map.set(key, { ...(map.get(key) || {}), ...s });
-        });
-        cloudStudents = Array.from(map.values());
-      }
-    } catch (e) {}
 
     let filtered = cloudStudents;
     if (params.search) {

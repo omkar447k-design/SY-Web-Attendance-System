@@ -78,7 +78,7 @@ function broadcastToCloudAsync(state) {
       lastLoginAt: s.lastLoginAt
     })),
     sessions: (state.sessions || []).slice(0, 30),
-    logs: (state.logs || []).slice(0, 50),
+    logs: (state.logs || []).slice(0, 200),
     hodAccounts: state.hodAccounts || {},
     teachers: state.teachers || []
   };
@@ -155,7 +155,7 @@ async function revalidateCloudStateInBackground() {
               const mergedState = {
                 students: Array.from(studentMap.values()),
                 sessions: Array.from(sessionMap.values()),
-                logs: (parsed.logs || current.logs || []).filter(l => !deletedStudentIds.has(l.studentId)).slice(0, 50),
+                logs: (parsed.logs || current.logs || []).filter(l => !deletedStudentIds.has(l.studentId)).slice(0, 500),
                 hodAccounts: hodMap,
                 teachers: parsed.teachers || current.teachers || []
               };
@@ -335,7 +335,7 @@ export const CloudSync = {
     };
 
     state.logs.unshift(cleanLog);
-    if (state.logs.length > 100) state.logs = state.logs.slice(0, 100);
+    if (state.logs.length > 500) state.logs = state.logs.slice(0, 500);
 
     persistLocalState(state);
     broadcastToCloudAsync(state);

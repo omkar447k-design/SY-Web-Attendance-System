@@ -56,23 +56,51 @@ export function AdminPortal({ hodProfile, onLaunchLectureAsHod }) {
 
   const loadData = async () => {
     try {
-      const [statsRes, studRes, teachRes, setRes, logsRes, lectRes] = await Promise.all([
+      const [statsRes, studRes, teachRes, logsRes, lectRes] = await Promise.all([
         api.getAdminStats(currentDept),
-        api.getStudents({ department: currentDept }),
-        api.getTeachers(),
-        api.getSettings(),
+        api.getStudents({ department: currentDept, division: divisionFilter }),
+        api.getTeachers(currentDept),
         api.getLoginLogs(currentDept),
         api.getConductedLectures(currentDept)
       ]);
 
-      if (statsRes.success) setStats(statsRes.data);
-      if (studRes.success) setStudents(Array.isArray(studRes.data) ? studRes.data : []);
-      if (teachRes.success) {
-        setTeachers(Array.isArray(teachRes.data) ? teachRes.data.filter(t => t.department === currentDept) : []);
+      if (statsRes.success) setStats(prev => {
+        const next = statsRes.data;
+        if (JSON.stringify(prev) === JSON.stringify(next)) return prev;
+        return next;
+      });
+
+      if (studRes.success) {
+        const nextStudents = Array.isArray(studRes.data) ? studRes.data : [];
+        setStudents(prev => {
+          if (prev.length === nextStudents.length && JSON.stringify(prev.map(s=>s.id)) === JSON.stringify(nextStudents.map(s=>s.id))) return prev;
+          return nextStudents;
+        });
       }
-      if (setRes.success) setSettings(setRes.data);
-      if (logsRes.success) setLoginLogs(logsRes.data || []);
-      if (lectRes.success) setConductedLectures(lectRes.data || []);
+
+      if (teachRes.success) {
+        const deptTeachers = Array.isArray(teachRes.data) ? teachRes.data.filter(t => t.department === currentDept) : [];
+        setTeachers(prev => {
+          if (prev.length === deptTeachers.length && JSON.stringify(prev.map(t=>t.id)) === JSON.stringify(deptTeachers.map(t=>t.id))) return prev;
+          return deptTeachers;
+        });
+      }
+
+      if (logsRes.success) {
+        const nextLogs = logsRes.data || [];
+        setLoginLogs(prev => {
+          if (prev.length === nextLogs.length) return prev;
+          return nextLogs;
+        });
+      }
+
+      if (lectRes.success) {
+        const nextLectures = lectRes.data || [];
+        setConductedLectures(prev => {
+          if (prev.length === nextLectures.length && JSON.stringify(prev.map(l=>l.id)) === JSON.stringify(nextLectures.map(l=>l.id))) return prev;
+          return nextLectures;
+        });
+      }
     } catch (err) {
       console.warn('Admin portal data refresh:', err.message);
     } finally {
@@ -81,8 +109,9 @@ export function AdminPortal({ hodProfile, onLaunchLectureAsHod }) {
   };
 
   useEffect(() => {
+    setLoading(true);
     loadData();
-    const interval = setInterval(loadData, 4000);
+    const interval = setInterval(loadData, 8000);
     return () => clearInterval(interval);
   }, [divisionFilter, currentDept]);
 
@@ -222,17 +251,24 @@ export function AdminPortal({ hodProfile, onLaunchLectureAsHod }) {
 
   const defaulters = students.filter(s => s.isDefaulter);
 
-  // Deduplicate strictly 1 permanent entry per student
+  // Build live login feed — show all student-related logs, deduplicated by student, filtered by division
   const studentLogsMap = new Map();
   loginLogs.forEach(l => {
-    if (l.type === 'NEW_STUDENT_REGISTRATION' || l.type === 'STUDENT_LOGIN') {
+    // Match all student log types
+    if (l.type === 'NEW_STUDENT_REGISTRATION' || l.type === 'STUDENT_DAILY_LOGIN' || l.type === 'STUDENT_LOGIN' || l.type === 'STUDENT_LOG') {
+      // Filter by current division tab
+      const logDiv = String(l.division || 'SY-A').toUpperCase();
+      if (logDiv !== divisionFilter) return;
+
       const key = `${l.department || currentDept}_${l.division || 'SY-A'}_${l.rollNo || l.studentId}`;
-      if (!studentLogsMap.has(key)) {
+      // Keep latest log per student (overwrite older)
+      const existing = studentLogsMap.get(key);
+      if (!existing || new Date(l.timestamp) > new Date(existing.timestamp)) {
         studentLogsMap.set(key, l);
       }
     }
   });
-  const studentLogs = Array.from(studentLogsMap.values());
+  const studentLogs = Array.from(studentLogsMap.values()).sort((a,b) => new Date(b.timestamp||0) - new Date(a.timestamp||0));
   const currentDeptObj = DEPARTMENTS.find(d => d.id === currentDept);
 
   return (
@@ -588,14 +624,25 @@ export function AdminPortal({ hodProfile, onLaunchLectureAsHod }) {
             <div className="min-w-0">
               <h3 className="text-sm sm:text-base font-bold text-slate-900 flex items-center space-x-2 truncate">
                 <Bell className="w-4 h-4 text-sky-600 flex-shrink-0" />
-                <span className="truncate">Live Registration & ID Audit Feed</span>
+                <span className="truncate">Live Registration & ID Audit Feed — {divisionFilter}</span>
               </h3>
-              <p className="text-xs text-slate-500 mt-0.5 truncate">Real-time log of verified ID cards in {currentDeptObj?.name}</p>
+              <p className="text-xs text-slate-500 mt-0.5 truncate">Permanent log of verified ID cards in {currentDeptObj?.name} • {divisionFilter}</p>
             </div>
-            <span className="px-2.5 py-1 bg-emerald-50 text-emerald-700 text-xs font-semibold border border-emerald-200 flex items-center space-x-1.5 flex-shrink-0">
-              <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-              <span>● Permanent Feed</span>
-            </span>
+            <div className="flex items-center space-x-2 flex-shrink-0">
+              <select
+                value={divisionFilter}
+                onChange={(e) => setDivisionFilter(e.target.value)}
+                className="bg-white border border-slate-300 px-3 py-1.5 text-xs font-bold text-slate-800 outline-none focus:border-slate-800"
+              >
+                <option value="SY-A">SY-A</option>
+                <option value="SY-B">SY-B</option>
+                <option value="SY-C">SY-C</option>
+              </select>
+              <span className="px-2.5 py-1 bg-emerald-50 text-emerald-700 text-xs font-semibold border border-emerald-200 flex items-center space-x-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                <span>● Permanent</span>
+              </span>
+            </div>
           </div>
 
           <div className="space-y-2.5 max-h-[550px] overflow-y-auto pr-1">
