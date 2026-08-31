@@ -28,9 +28,8 @@ function persistDeletionTombstones() {
   } catch (e) {}
 }
 
-// 1. Instant Cache Loader (0ms)
+// 1. Live State Loader — always reads from localStorage for cross-tab freshness
 function getInitialCache() {
-  if (memoryCache) return memoryCache;
   try {
     const local = localStorage.getItem('sy_cloud_cache_v5');
     if (local) {
@@ -38,6 +37,8 @@ function getInitialCache() {
       return memoryCache;
     }
   } catch (e) {}
+
+  if (memoryCache) return memoryCache;
 
   memoryCache = {
     students: [],
