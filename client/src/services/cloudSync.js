@@ -1,4 +1,4 @@
-const SYNC_TOPIC = 'sy_attendance_prod_sync_v2026_clean_v11';
+const SYNC_TOPIC = 'sy_attendance_prod_sync_v2026_clean_v12';
 const SYNC_URL = `https://ntfy.sh/${SYNC_TOPIC}`;
 
 let memoryCache = null;
@@ -9,25 +9,25 @@ let deletedStudentIds = new Set();
 let deletedSessionIds = new Set();
 let deletedTeacherIds = new Set();
 
-// Restore persisted deletion tombstones (v8)
+// Restore persisted deletion tombstones (v9)
 try {
-  const ds = localStorage.getItem('sy_deleted_students_v8');
+  const ds = localStorage.getItem('sy_deleted_students_v9');
   if (ds) deletedStudentIds = new Set(JSON.parse(ds));
 } catch (e) {}
 try {
-  const dl = localStorage.getItem('sy_deleted_sessions_v8');
+  const dl = localStorage.getItem('sy_deleted_sessions_v9');
   if (dl) deletedSessionIds = new Set(JSON.parse(dl));
 } catch (e) {}
 try {
-  const dt = localStorage.getItem('sy_deleted_teachers_v8');
+  const dt = localStorage.getItem('sy_deleted_teachers_v9');
   if (dt) deletedTeacherIds = new Set(JSON.parse(dt));
 } catch (e) {}
 
 function persistDeletionTombstones() {
   try {
-    localStorage.setItem('sy_deleted_students_v8', JSON.stringify([...deletedStudentIds]));
-    localStorage.setItem('sy_deleted_sessions_v8', JSON.stringify([...deletedSessionIds]));
-    localStorage.setItem('sy_deleted_teachers_v8', JSON.stringify([...deletedTeacherIds]));
+    localStorage.setItem('sy_deleted_students_v9', JSON.stringify([...deletedStudentIds]));
+    localStorage.setItem('sy_deleted_sessions_v9', JSON.stringify([...deletedSessionIds]));
+    localStorage.setItem('sy_deleted_teachers_v9', JSON.stringify([...deletedTeacherIds]));
   } catch (e) {}
 }
 
@@ -45,7 +45,7 @@ function isStudentDeleted(s) {
 // 1. Live State Loader — cleans previous student records while preserving teachers and HOD accounts
 function getInitialCache() {
   try {
-    const local = localStorage.getItem('sy_cloud_cache_v11');
+    const local = localStorage.getItem('sy_cloud_cache_v12');
     if (local) {
       memoryCache = JSON.parse(local);
       return memoryCache;
@@ -54,7 +54,7 @@ function getInitialCache() {
     // Extract ONLY teachers and HOD accounts from any previous versions
     let preservedTeachers = [];
     let preservedHod = {};
-    const oldKeys = ['sy_cloud_cache_v10', 'sy_cloud_cache_v9', 'sy_cloud_cache_v8', 'sy_cloud_cache_v7', 'sy_cloud_cache_v6', 'sy_cloud_cache_v5'];
+    const oldKeys = ['sy_cloud_cache_v11', 'sy_cloud_cache_v10', 'sy_cloud_cache_v9', 'sy_cloud_cache_v8', 'sy_cloud_cache_v7', 'sy_cloud_cache_v6', 'sy_cloud_cache_v5'];
     for (const k of oldKeys) {
       try {
         const val = localStorage.getItem(k);
@@ -80,7 +80,6 @@ function getInitialCache() {
       teachers: preservedTeachers
     };
     persistLocalState(memoryCache);
-    broadcastToCloudAsync(memoryCache);
     return memoryCache;
   } catch (e) {}
 
@@ -176,22 +175,36 @@ async function revalidateCloudStateInBackground() {
     if (res.ok) {
       const text = await res.text();
       const lines = text.trim().split('\n').filter(Boolean);
-      for (let i = lines.length - 1; i >= 0; i--) {
+      const current = getInitialCache();
+
+      const studentMap = new Map();
+      (current.students || []).forEach(s => {
+        if (s && !isStudentDeleted(s)) {
+          const key = s.id || `S_${String(s.department || '').toLowerCase()}_${String(s.division || 'SY-A').toUpperCase()}_${s.rollNo}`;
+          studentMap.set(key, s);
+        }
+      });
+
+      const sessionMap = new Map();
+      (current.sessions || []).forEach(s => {
+        if (s && !deletedSessionIds.has(s.id)) sessionMap.set(s.id, s);
+      });
+
+      const teacherMap = new Map();
+      (current.teachers || []).forEach(t => {
+        if (t && !deletedTeacherIds.has(t.id)) teacherMap.set(t.id, t);
+      });
+
+      let hodMap = { ...(current.hodAccounts || {}) };
+      let allLogs = [...(current.logs || [])];
+
+      for (let i = 0; i < lines.length; i++) {
         try {
           const item = JSON.parse(lines[i]);
           if (item && item.event === 'message' && item.message) {
             const parsed = JSON.parse(item.message);
             if (parsed && typeof parsed === 'object') {
-              const current = getInitialCache();
               
-              // Merge students intelligently — NEVER resurrect deleted ones
-              const studentMap = new Map();
-              (current.students || []).forEach(s => {
-                if (s && !isStudentDeleted(s)) {
-                  const key = s.id || `S_${String(s.department || '').toLowerCase()}_${String(s.division || 'SY-A').toUpperCase()}_${s.rollNo}`;
-                  studentMap.set(key, s);
-                }
-              });
               (parsed.students || []).forEach(s => {
                 if (s && !isStudentDeleted(s)) {
                   const key = s.id || `S_${String(s.department || '').toLowerCase()}_${String(s.division || 'SY-A').toUpperCase()}_${s.rollNo}`;
@@ -200,46 +213,48 @@ async function revalidateCloudStateInBackground() {
                 }
               });
 
-              // Merge HOD accounts
-              const hodMap = { ...(current.hodAccounts || {}), ...(parsed.hodAccounts || {}) };
+              if (parsed.hodAccounts) {
+                hodMap = { ...hodMap, ...parsed.hodAccounts };
+              }
 
-              // Merge sessions — but NEVER resurrect deleted ones
-              const sessionMap = new Map();
-              (current.sessions || []).forEach(s => {
-                if (s && !deletedSessionIds.has(s.id)) sessionMap.set(s.id, s);
-              });
               (parsed.sessions || []).forEach(s => {
                 if (s && !deletedSessionIds.has(s.id)) {
                   sessionMap.set(s.id, { ...(sessionMap.get(s.id) || {}), ...s });
                 }
               });
 
-              // Merge teachers — but NEVER resurrect deleted ones
-              const teacherMap = new Map();
-              (current.teachers || []).forEach(t => {
-                if (t && !deletedTeacherIds.has(t.id)) teacherMap.set(t.id, t);
-              });
               (parsed.teachers || []).forEach(t => {
                 if (t && !deletedTeacherIds.has(t.id)) {
-                  const existing = teacherMap.get(t.id);
-                  teacherMap.set(t.id, { ...(existing || {}), ...t });
+                  teacherMap.set(t.id, { ...(teacherMap.get(t.id) || {}), ...t });
                 }
               });
 
-              const mergedState = {
-                students: Array.from(studentMap.values()),
-                sessions: Array.from(sessionMap.values()),
-                logs: (parsed.logs || current.logs || []).filter(l => l && !deletedStudentIds.has(l.studentId)).slice(0, 500),
-                hodAccounts: hodMap,
-                teachers: Array.from(teacherMap.values())
-              };
-
-              persistLocalState(mergedState);
-              break;
+              if (Array.isArray(parsed.logs)) {
+                allLogs = [...allLogs, ...parsed.logs];
+              }
             }
           }
         } catch (e) {}
       }
+
+      // Deduplicate logs
+      const logMap = new Map();
+      allLogs.forEach(l => {
+        if (l && l.studentId && !deletedStudentIds.has(l.studentId)) {
+          const lk = `${l.type}_${l.studentId}_${l.timestamp}`;
+          logMap.set(lk, l);
+        }
+      });
+
+      const mergedState = {
+        students: Array.from(studentMap.values()),
+        sessions: Array.from(sessionMap.values()),
+        logs: Array.from(logMap.values()).slice(0, 500),
+        hodAccounts: hodMap,
+        teachers: Array.from(teacherMap.values())
+      };
+
+      persistLocalState(mergedState);
     }
   } catch (err) {
     // Silent background timeout
