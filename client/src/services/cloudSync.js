@@ -7,6 +7,27 @@ const SYNC_URL = `https://ntfy.sh/${SYNC_TOPIC}`;
 let memoryCache = null;
 let isSyncing = false;
 
+// Track IDs that were explicitly deleted so cloud merge never resurrects them
+let deletedStudentIds = new Set();
+let deletedSessionIds = new Set();
+
+// Restore persisted deletion tombstones
+try {
+  const ds = localStorage.getItem('sy_deleted_students_v1');
+  if (ds) deletedStudentIds = new Set(JSON.parse(ds));
+} catch (e) {}
+try {
+  const dl = localStorage.getItem('sy_deleted_sessions_v1');
+  if (dl) deletedSessionIds = new Set(JSON.parse(dl));
+} catch (e) {}
+
+function persistDeletionTombstones() {
+  try {
+    localStorage.setItem('sy_deleted_students_v1', JSON.stringify([...deletedStudentIds]));
+    localStorage.setItem('sy_deleted_sessions_v1', JSON.stringify([...deletedSessionIds]));
+  } catch (e) {}
+}
+
 // 1. Instant Cache Loader (0ms)
 function getInitialCache() {
   if (memoryCache) return memoryCache;
@@ -105,26 +126,36 @@ async function revalidateCloudStateInBackground() {
             if (parsed && typeof parsed === 'object') {
               const current = getInitialCache();
               
-              // Merge students intelligently
+              // Merge students intelligently — but NEVER resurrect deleted ones
               const studentMap = new Map();
-              (current.students || []).forEach(s => studentMap.set(s.id, s));
+              (current.students || []).forEach(s => {
+                if (!deletedStudentIds.has(s.id)) studentMap.set(s.id, s);
+              });
               (parsed.students || []).forEach(s => {
-                const existing = studentMap.get(s.id);
-                studentMap.set(s.id, { ...(existing || {}), ...s });
+                if (!deletedStudentIds.has(s.id)) {
+                  const existing = studentMap.get(s.id);
+                  studentMap.set(s.id, { ...(existing || {}), ...s });
+                }
               });
 
               // Merge HOD accounts
               const hodMap = { ...(current.hodAccounts || {}), ...(parsed.hodAccounts || {}) };
 
-              // Merge sessions
+              // Merge sessions — but NEVER resurrect deleted ones
               const sessionMap = new Map();
-              (current.sessions || []).forEach(s => sessionMap.set(s.id, s));
-              (parsed.sessions || []).forEach(s => sessionMap.set(s.id, { ...(sessionMap.get(s.id) || {}), ...s }));
+              (current.sessions || []).forEach(s => {
+                if (!deletedSessionIds.has(s.id)) sessionMap.set(s.id, s);
+              });
+              (parsed.sessions || []).forEach(s => {
+                if (!deletedSessionIds.has(s.id)) {
+                  sessionMap.set(s.id, { ...(sessionMap.get(s.id) || {}), ...s });
+                }
+              });
 
               const mergedState = {
                 students: Array.from(studentMap.values()),
                 sessions: Array.from(sessionMap.values()),
-                logs: (parsed.logs || current.logs || []).slice(0, 50),
+                logs: (parsed.logs || current.logs || []).filter(l => !deletedStudentIds.has(l.studentId)).slice(0, 50),
                 hodAccounts: hodMap,
                 teachers: parsed.teachers || current.teachers || []
               };
@@ -209,6 +240,9 @@ export const CloudSync = {
   },
 
   deleteStudent: async (studentId) => {
+    deletedStudentIds.add(studentId);
+    persistDeletionTombstones();
+
     const state = getInitialCache();
     state.students = (state.students || []).filter(s => s.id !== studentId);
     state.logs = (state.logs || []).filter(l => l.studentId !== studentId);
@@ -259,6 +293,9 @@ export const CloudSync = {
   },
 
   deleteSession: async (sessionId) => {
+    deletedSessionIds.add(sessionId);
+    persistDeletionTombstones();
+
     const state = getInitialCache();
     state.sessions = (state.sessions || []).filter(s => s.id !== sessionId);
     persistLocalState(state);
