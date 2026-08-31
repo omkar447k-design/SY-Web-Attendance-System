@@ -166,25 +166,16 @@ export const api = {
 
   addStudent: async (data) => {
     await CloudSync.saveStudent(data);
-    try {
-      await request('/api/admin/students', { method: 'POST', body: JSON.stringify(data) });
-    } catch (e) {}
     return { success: true, message: 'Student added to roster', data };
   },
 
   deleteStudent: async (studentId) => {
     await CloudSync.deleteStudent(studentId);
-    try {
-      await request(`/api/admin/students/${studentId}/delete`, { method: 'POST' });
-    } catch (e) {}
     return { success: true, message: 'Student removed permanently from roster.' };
   },
 
   resetStudentDevice: async (studentId) => {
     await CloudSync.resetDevice(studentId);
-    try {
-      await request(`/api/admin/students/${studentId}/reset-device`, { method: 'POST' });
-    } catch (e) {}
     return { success: true, message: 'Student phone hardware binding reset' };
   },
 
@@ -467,10 +458,6 @@ export const api = {
       timestamp: new Date().toISOString()
     });
 
-    try {
-      await request('/api/student/register', { method: 'POST', body: JSON.stringify(newStudent) });
-    } catch (err) {}
-
     return {
       success: true,
       message: 'Student Registration & Hardware Device Binding Successful',
@@ -523,10 +510,6 @@ export const api = {
       status: 'VERIFIED_DEVICE_MATCH',
       timestamp: new Date().toISOString()
     });
-
-    try {
-      await request('/api/student/login', { method: 'POST', body: JSON.stringify(data) });
-    } catch (err) {}
 
     return {
       success: true,
