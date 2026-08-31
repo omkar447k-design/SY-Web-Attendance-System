@@ -15,6 +15,15 @@ export function StudentPortal({ student, device }) {
 
   const refreshData = async () => {
     try {
+      if (student && student.id && student.activeSessionToken) {
+        const verifyRes = await api.verifyStudentSession(student.id, student.activeSessionToken);
+        if (verifyRes && !verifyRes.valid) {
+          alert('🛑 Session Expired: This account was logged in from another device or reset by your HOD. Logging out.');
+          window.location.reload();
+          return;
+        }
+      }
+
       const sessRes = await api.getStudentActiveSession(student.division, student.id, student.department);
       if (sessRes.success && sessRes.hasActiveSession) {
         setActiveSession(sessRes.session);

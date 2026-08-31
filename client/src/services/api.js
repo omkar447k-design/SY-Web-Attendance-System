@@ -466,7 +466,7 @@ export const api = {
     };
   },
 
-  // 2. STUDENT LOGIN (Daily 3-Field Match + Same Device Verification)
+  // 2. STUDENT LOGIN (Daily Single-Device Lock + Dynamic Session Token)
   studentLogin: async (data) => {
     const cleanDept = String(data.department || 'entc').trim().toLowerCase();
     const cleanDiv = String(data.division || 'SY-A').trim().toUpperCase();
@@ -484,15 +484,23 @@ export const api = {
       throw new Error(`🛑 Student Not Found: Roll No. ${cleanRoll} is not registered in Division ${cleanDiv} (${cleanDept.toUpperCase()}). Please switch to the "Register New Student" tab to register your ID card.`);
     }
 
-    // 2. Hardware Device Match Enforcement (SAME DEVICE REQUIRED)
-    if (existing.boundDeviceId && data.deviceId && existing.boundDeviceId !== data.deviceId) {
-      throw new Error(`🛑 Hardware Lock Violation: Account (Roll No. ${cleanRoll}) is locked to another physical phone/device. Same device required that was used during registration. Contact your HOD/Faculty to reset your device lock.`);
+    // 2. Hardware Device Match Enforcement (Strict Device Binding Logic)
+    // If boundDeviceId is NULL (e.g. after Admin resets device) -> bind this new device!
+    let targetDeviceId = existing.boundDeviceId;
+    if (!targetDeviceId) {
+      targetDeviceId = data.deviceId || `DEV_${Date.now()}`;
+    } else if (data.deviceId && targetDeviceId !== data.deviceId) {
+      // If bound to a different device -> REJECT
+      throw new Error(`🛑 This account is already active on another device. (Roll No. ${cleanRoll} is locked to another physical phone). Contact your HOD/Faculty to click "Reset Device".`);
     }
 
+    // 3. Generate Single-Device Active Session Token (invalidates old sessions on other devices)
     const sessionToken = `tok_${cleanDept}_${cleanDiv}_${cleanRoll}_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
 
     const updatedStudent = {
       ...existing,
+      boundDeviceId: targetDeviceId,
+      boundAt: existing.boundAt || new Date().toISOString(),
       activeSessionToken: sessionToken,
       lastLoginAt: new Date().toISOString()
     };
@@ -506,7 +514,8 @@ export const api = {
       prn: updatedStudent.prn,
       department: updatedStudent.department,
       division: updatedStudent.division,
-      deviceId: data.deviceId || updatedStudent.boundDeviceId,
+      deviceId: targetDeviceId,
+      idCardPhoto: updatedStudent.idCardPhoto,
       status: 'VERIFIED_DEVICE_MATCH',
       timestamp: new Date().toISOString()
     });
@@ -516,6 +525,14 @@ export const api = {
       student: updatedStudent,
       token: sessionToken
     };
+  },
+
+  verifyStudentSession: async (studentId, sessionToken) => {
+    const students = await CloudSync.getStudents();
+    const student = students.find(s => s.id === studentId);
+    if (!student) return { valid: false, reason: 'Student removed from database' };
+    if (!student.activeSessionToken) return { valid: true };
+    return { valid: student.activeSessionToken === sessionToken };
   },
 
   getStudentActiveSession: async (division, studentId, department) => {

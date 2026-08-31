@@ -241,21 +241,49 @@ export function AdminPortal({ hodProfile, onLaunchLectureAsHod }) {
 
   // Build live login feed — show all student-related logs, deduplicated by student, filtered by division
   const studentLogsMap = new Map();
+
+  // 1. Seed from registered students in this division
+  students.forEach(s => {
+    const sDiv = String(s.division || 'SY-A').toUpperCase();
+    if (sDiv === divisionFilter) {
+      const key = `${s.department || currentDept}_${sDiv}_${s.rollNo}`;
+      studentLogsMap.set(key, {
+        id: `LOG_${s.id}`,
+        studentId: s.id,
+        studentName: s.name,
+        rollNo: s.rollNo,
+        prn: s.prn,
+        department: s.department || currentDept,
+        division: sDiv,
+        deviceId: s.boundDeviceId,
+        idCardPhoto: s.idCardPhoto,
+        status: s.boundDeviceId ? 'VERIFIED_DEVICE_MATCH' : 'PHYSICAL_ID_VERIFIED',
+        timestamp: s.lastLoginAt || s.boundAt || new Date().toISOString()
+      });
+    }
+  });
+
+  // 2. Overlay live dynamic logs
   loginLogs.forEach(l => {
-    // Match all student log types
-    if (l.type === 'NEW_STUDENT_REGISTRATION' || l.type === 'STUDENT_DAILY_LOGIN' || l.type === 'STUDENT_LOGIN' || l.type === 'STUDENT_LOG') {
-      // Filter by current division tab
+    if (l.type === 'NEW_STUDENT_REGISTRATION' || l.type === 'STUDENT_DAILY_LOGIN' || l.type === 'STUDENT_LOGIN' || l.type === 'STUDENT_LOG' || l.type === 'ATTENDANCE_MARKED') {
       const logDiv = String(l.division || 'SY-A').toUpperCase();
       if (logDiv !== divisionFilter) return;
 
-      const key = `${l.department || currentDept}_${l.division || 'SY-A'}_${l.rollNo || l.studentId}`;
-      // Keep latest log per student (overwrite older)
+      const key = `${l.department || currentDept}_${logDiv}_${l.rollNo || l.studentId}`;
       const existing = studentLogsMap.get(key);
-      if (!existing || new Date(l.timestamp) > new Date(existing.timestamp)) {
-        studentLogsMap.set(key, l);
-      }
+      const studentProfile = students.find(s => Number(s.rollNo) === Number(l.rollNo) && String(s.division||'').toUpperCase() === logDiv);
+
+      studentLogsMap.set(key, {
+        ...(existing || {}),
+        ...l,
+        idCardPhoto: l.idCardPhoto || studentProfile?.idCardPhoto || existing?.idCardPhoto,
+        studentName: l.studentName || studentProfile?.name || existing?.studentName,
+        prn: l.prn || studentProfile?.prn || existing?.prn,
+        timestamp: (!existing || new Date(l.timestamp) > new Date(existing.timestamp)) ? l.timestamp : existing.timestamp
+      });
     }
   });
+
   const studentLogs = Array.from(studentLogsMap.values()).sort((a,b) => new Date(b.timestamp||0) - new Date(a.timestamp||0));
   const currentDeptObj = DEPARTMENTS.find(d => d.id === currentDept);
 
@@ -686,14 +714,27 @@ export function AdminPortal({ hodProfile, onLaunchLectureAsHod }) {
                       </p>
                     </div>
 
-                    <button
-                      onClick={() => handleDeleteStudent(log.studentId, log.studentName, log.rollNo)}
-                      className="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-semibold transition flex items-center space-x-1 touch-target flex-shrink-0"
-                      title="Expel / Permanently Delete Student"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                      <span>Expel</span>
-                    </button>
+                    <div className="flex items-center space-x-1 flex-shrink-0">
+                      {log.deviceId && (
+                        <button
+                          onClick={() => handleResetDevice(log.studentId, log.studentName)}
+                          className="px-2 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold border border-slate-200 transition touch-target flex items-center space-x-0.5"
+                          title="Reset Phone Lock"
+                        >
+                          <Unlock className="w-3 h-3" />
+                          <span>Reset</span>
+                        </button>
+                      )}
+
+                      <button
+                        onClick={() => handleDeleteStudent(log.studentId, log.studentName, log.rollNo)}
+                        className="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-semibold transition flex items-center space-x-1 touch-target"
+                        title="Expel / Permanently Delete Student"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Expel</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))
