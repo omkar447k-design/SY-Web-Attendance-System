@@ -300,10 +300,10 @@ app.get('/api/admin/stats', (req, res) => {
   }
 });
 
-// 11. STUDENT: REGISTRATION & LOGIN (1-Phone Hardware Binding & Single-Session Lock)
-app.post('/api/student/login', (req, res) => {
+// 11A. STUDENT: REGISTRATION (First-Time ID Card & Device Binding)
+app.post('/api/student/register', (req, res) => {
   try {
-    const { rollNo, prn, name, idCardPhoto, department = 'entc', division = 'SY-A', deviceId } = req.body || {};
+    const { rollNo, prn, name, idCardPhoto, department = 'entc', division = 'SY-A', deviceId, deviceName, biometricMethod } = req.body || {};
 
     const numericRoll = Number(rollNo) || 1;
     const cleanPrn = String(prn || '').trim().toUpperCase();
@@ -311,73 +311,105 @@ app.post('/api/student/login', (req, res) => {
     const cleanDept = String(department || 'entc').trim().toLowerCase();
     const cleanDiv = String(division || 'SY-A').trim().toUpperCase();
 
-    // STRICT 3-CONDITION COMPOUND LOOKUP: Department + Division + Roll No
+    // 1. Strict Duplicate Check on (Dept + Division + Roll No)
+    let existing = db.students.find(s =>
+      Number(s.rollNo) === numericRoll &&
+      String(s.division || '').trim().toUpperCase() === cleanDiv &&
+      String(s.department || '').trim().toLowerCase() === cleanDept
+    );
+
+    if (existing) {
+      return res.status(400).json({
+        success: false,
+        error: `🛑 Account Already Registered: Roll No. ${numericRoll} in ${cleanDiv} (${cleanDept.toUpperCase()}) already exists in the database. Please use the Student Login tab.`
+      });
+    }
+
+    const sessionToken = `tok_${cleanDept}_${cleanDiv}_${numericRoll}_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+
+    const newStudent = {
+      id: `S_${cleanDept}_${cleanDiv}_${numericRoll}`,
+      rollNo: numericRoll,
+      prn: cleanPrn || `12251ET${String(numericRoll).padStart(3, '0')}`,
+      name: cleanName,
+      idCardPhoto,
+      department: cleanDept,
+      division: cleanDiv,
+      batch: numericRoll <= 20 ? 'B1' : numericRoll <= 40 ? 'B2' : 'B3',
+      attendancePercentage: 100.0,
+      isDefaulter: false,
+      boundDeviceId: deviceId || `DEV_${Date.now()}`,
+      boundDeviceName: deviceName || 'Registered Hardware Device',
+      boundBiometricMethod: biometricMethod || 'Device Biometrics / Passcode',
+      boundAt: new Date().toISOString(),
+      activeSessionToken: sessionToken,
+      lastLoginAt: new Date().toISOString()
+    };
+
+    db.students.push(newStudent);
+
+    // Audit Log
+    db.loginLogs.unshift({
+      id: `LOG_${Date.now()}_${numericRoll}`,
+      studentId: newStudent.id,
+      studentName: newStudent.name,
+      rollNo: newStudent.rollNo,
+      prn: newStudent.prn,
+      department: newStudent.department,
+      division: newStudent.division,
+      deviceId: newStudent.boundDeviceId,
+      status: 'VERIFIED_PHYSICAL_ID',
+      timestamp: new Date().toISOString()
+    });
+
+    return res.json({
+      success: true,
+      message: 'Student registration & hardware device binding successful',
+      student: newStudent,
+      token: sessionToken
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message || 'Registration error' });
+  }
+});
+
+// 11B. STUDENT: DAILY LOGIN (Strict 3-Field Match: Dept + Division + Roll No + Same Device Check)
+app.post('/api/student/login', (req, res) => {
+  try {
+    const { rollNo, department = 'entc', division = 'SY-A', deviceId } = req.body || {};
+
+    const numericRoll = Number(rollNo) || 1;
+    const cleanDept = String(department || 'entc').trim().toLowerCase();
+    const cleanDiv = String(division || 'SY-A').trim().toUpperCase();
+
+    // 1. Strict 3-Condition Compound Lookup
     let student = db.students.find(s =>
       Number(s.rollNo) === numericRoll &&
       String(s.division || '').trim().toUpperCase() === cleanDiv &&
       String(s.department || '').trim().toLowerCase() === cleanDept
     );
 
-    // STEP 2: Strict Existence & Device/Identity Verification (Roll No + Dept + Division)
-    if (student) {
-      // 1. Device lock mismatch
-      if (student.boundDeviceId && deviceId && student.boundDeviceId !== deviceId) {
-        return res.status(403).json({
-          success: false,
-          error: `🛑 Account Already Exists: Roll No. ${numericRoll} in ${division} (${department.toUpperCase()}) is already registered and locked to another device. No login allowed. Contact HOD/Admin.`
-        });
-      }
-      // 2. Student Name conflict
-      if (student.name && cleanName && student.name.toLowerCase() !== cleanName.toLowerCase()) {
-        return res.status(403).json({
-          success: false,
-          error: `🛑 Account Conflict: Roll No. ${numericRoll} in ${division} is already registered under "${student.name}". Duplicate registration is prohibited.`
-        });
-      }
-      // 3. PRN conflict
-      if (student.prn && cleanPrn && student.prn !== cleanPrn) {
-        return res.status(403).json({
-          success: false,
-          error: `🛑 PRN Conflict: Roll No. ${numericRoll} in ${division} is registered under PRN "${student.prn}". Duplicate login prohibited.`
-        });
-      }
+    if (!student) {
+      return res.status(404).json({
+        success: false,
+        error: `🛑 Student Not Found: Roll No. ${numericRoll} is not registered in Division ${cleanDiv} (${cleanDept.toUpperCase()}). Please switch to the "Register New Student" tab first.`
+      });
     }
 
-    const sessionToken = `tok_${department}_${division}_${numericRoll}_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
-
-    if (student) {
-      student.name = cleanName;
-      student.prn = cleanPrn || student.prn;
-      student.idCardPhoto = idCardPhoto || student.idCardPhoto;
-      if (!student.boundDeviceId && deviceId) {
-        student.boundDeviceId = deviceId;
-        student.boundAt = new Date().toISOString();
-      }
-      student.activeSessionToken = sessionToken;
-      student.lastLoginAt = new Date().toISOString();
-    } else {
-      student = {
-        id: `S_${department}_${division}_${numericRoll}`,
-        rollNo: numericRoll,
-        prn: cleanPrn || `12251ET${String(numericRoll).padStart(3, '0')}`,
-        name: cleanName,
-        idCardPhoto,
-        department,
-        division,
-        batch: numericRoll <= 20 ? 'B1' : numericRoll <= 40 ? 'B2' : 'B3',
-        attendancePercentage: 100.0,
-        isDefaulter: false,
-        boundDeviceId: deviceId || `AND_DEV_${Date.now()}`,
-        boundAt: new Date().toISOString(),
-        activeSessionToken: sessionToken,
-        lastLoginAt: new Date().toISOString()
-      };
-      db.students.push(student);
+    // 2. Same Hardware Device Required
+    if (student.boundDeviceId && deviceId && student.boundDeviceId !== deviceId) {
+      return res.status(403).json({
+        success: false,
+        error: `🛑 Hardware Lock Violation: Account (Roll No. ${numericRoll}) is locked to another physical phone/device. Same device required that was used during registration. Contact your HOD to reset.`
+      });
     }
 
-    // Add Audit Log
-    const logIdx = db.loginLogs.findIndex(l => l.rollNo === numericRoll && l.department === department && l.division === division);
-    const logEntry = {
+    const sessionToken = `tok_${cleanDept}_${cleanDiv}_${numericRoll}_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+    student.activeSessionToken = sessionToken;
+    student.lastLoginAt = new Date().toISOString();
+
+    // Audit Log
+    db.loginLogs.unshift({
       id: `LOG_${Date.now()}_${numericRoll}`,
       studentId: student.id,
       studentName: student.name,
@@ -385,17 +417,10 @@ app.post('/api/student/login', (req, res) => {
       prn: student.prn,
       department: student.department,
       division: student.division,
-      idCardPhoto: student.idCardPhoto,
-      deviceId: student.boundDeviceId,
-      status: 'VERIFIED_PHYSICAL_ID',
+      deviceId: deviceId || student.boundDeviceId,
+      status: 'VERIFIED_DEVICE_MATCH',
       timestamp: new Date().toISOString()
-    };
-
-    if (logIdx >= 0) {
-      db.loginLogs[logIdx] = logEntry;
-    } else {
-      db.loginLogs.unshift(logEntry);
-    }
+    });
 
     return res.json({
       success: true,

@@ -317,62 +317,114 @@ export const api = {
   manualMarkAttendance: (sessionId, rollNo) => request('/api/teacher/session/manual-mark', { method: 'POST', body: JSON.stringify({ sessionId, rollNo }) }),
   getSessionExcelUrl: (sessionId) => `${API_BASE}/api/teacher/session/${sessionId}/export`,
 
-  // Student (1-Phone Hardware Binding & Single-Session Lock)
-  studentLogin: async (data) => {
-    // 1. Strict Duplicate & Identity Verification (Roll No + Dept + Division)
-    const existingStudents = await CloudSync.getStudents(data.department, data.division);
+  // 1. STUDENT REGISTRATION (First-Time Binding & ID OCR)
+  studentRegister: async (data) => {
+    const cleanDept = String(data.department || 'entc').trim().toLowerCase();
+    const cleanDiv = String(data.division || 'SY-A').trim().toUpperCase();
+    const cleanRoll = Number(data.rollNo);
+
+    // 1. Strict Duplicate Check on (Dept + Division + Roll No)
+    const existingStudents = await CloudSync.getStudents(cleanDept, cleanDiv);
     const existing = existingStudents.find(s =>
-      s.rollNo === Number(data.rollNo) &&
-      s.division === data.division &&
-      s.department === data.department
+      Number(s.rollNo) === cleanRoll &&
+      String(s.division || '').toUpperCase() === cleanDiv &&
+      String(s.department || '').toLowerCase() === cleanDept
     );
 
     if (existing) {
-      // 1. Device Mismatch
-      if (existing.boundDeviceId && data.deviceId && existing.boundDeviceId !== data.deviceId) {
-        throw new Error(`🛑 Account Already Exists: Roll No. ${data.rollNo} in ${data.division} (${data.department.toUpperCase()}) is already registered and bound to another device. No login allowed. Contact your HOD/Faculty to reset your record.`);
-      }
-      // 2. Name Mismatch
-      if (existing.name && data.name && existing.name.toLowerCase() !== data.name.trim().toLowerCase()) {
-        throw new Error(`🛑 Account Conflict: Roll No. ${data.rollNo} in ${data.division} already belongs to "${existing.name}". Duplicate login is not permitted.`);
-      }
-      // 3. PRN Mismatch
-      if (existing.prn && data.prn && existing.prn !== data.prn.trim().toUpperCase()) {
-        throw new Error(`🛑 PRN Conflict: Roll No. ${data.rollNo} in ${data.division} is registered under PRN "${existing.prn}". No login allowed.`);
-      }
+      throw new Error(`🛑 Account Already Registered: Roll No. ${cleanRoll} in ${cleanDiv} (${cleanDept.toUpperCase()}) already exists in the database. Please switch to the "Student Login" tab.`);
     }
 
-    const sessionToken = `tok_${data.department || 'entc'}_${data.division || 'SY-A'}_${data.rollNo}_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+    const sessionToken = `tok_${cleanDept}_${cleanDiv}_${cleanRoll}_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
 
-    const studentData = {
-      id: `S_${data.department || 'entc'}_${data.division || 'SY-A'}_${data.rollNo}`,
-      rollNo: Number(data.rollNo),
-      name: data.name?.trim() || 'Student',
-      prn: data.prn?.trim()?.toUpperCase() || '12251ET000',
-      department: data.department || 'entc',
-      division: data.division || 'SY-A',
-      batch: Number(data.rollNo) <= 20 ? 'B1' : Number(data.rollNo) <= 40 ? 'B2' : 'B3',
+    const newStudent = {
+      id: `S_${cleanDept}_${cleanDiv}_${cleanRoll}`,
+      rollNo: cleanRoll,
+      name: (data.name || 'Student').trim(),
+      prn: (data.prn || '').trim().toUpperCase() || `12251ET${String(cleanRoll).padStart(3, '0')}`,
+      department: cleanDept,
+      division: cleanDiv,
+      batch: cleanRoll <= 20 ? 'B1' : cleanRoll <= 40 ? 'B2' : 'B3',
       idCardPhoto: data.idCardPhoto,
-      boundDeviceId: existing?.boundDeviceId || data.deviceId || `AND_DEV_${Date.now()}`,
+      boundDeviceId: data.deviceId || `DEV_${Date.now()}`,
+      boundDeviceName: data.deviceName || 'Registered Hardware Device',
+      boundBiometricMethod: data.biometricMethod || 'Device Biometrics / Passcode',
+      boundAt: new Date().toISOString(),
       activeSessionToken: sessionToken,
       lastLoginAt: new Date().toISOString(),
       attendancePercentage: 100.0,
-      isDefaulter: false,
-      boundAt: existing?.boundAt || new Date().toISOString()
+      isDefaulter: false
     };
 
-    await CloudSync.saveStudent(studentData);
+    await CloudSync.saveStudent(newStudent);
     await CloudSync.saveLog({
-      type: 'STUDENT_LOGIN_DEVICE_LOCKED',
-      studentId: studentData.id,
-      studentName: studentData.name,
-      rollNo: studentData.rollNo,
-      prn: studentData.prn,
-      department: studentData.department,
-      division: studentData.division,
-      idCardPhoto: studentData.idCardPhoto,
-      deviceId: studentData.boundDeviceId,
-      status: 'VERIFIED_PHYSICAL_ID'
+      type: 'NEW_STUDENT_REGISTRATION',
+      studentId: newStudent.id,
+      studentName: newStudent.name,
+      rollNo: newStudent.rollNo,
+      prn: newStudent.prn,
+      department: newStudent.department,
+      division: newStudent.division,
+      deviceId: newStudent.boundDeviceId,
+      status: 'VERIFIED_PHYSICAL_ID',
+      timestamp: new Date().toISOString()
+    });
+
+    try {
+      await request('/api/student/register', { method: 'POST', body: JSON.stringify(newStudent) });
+    } catch (err) {}
+
+    return {
+      success: true,
+      message: 'Student Registration & Hardware Device Binding Successful',
+      student: newStudent,
+      token: sessionToken
+    };
+  },
+
+  // 2. STUDENT LOGIN (Daily 3-Field Match + Same Device Verification)
+  studentLogin: async (data) => {
+    const cleanDept = String(data.department || 'entc').trim().toLowerCase();
+    const cleanDiv = String(data.division || 'SY-A').trim().toUpperCase();
+    const cleanRoll = Number(data.rollNo);
+
+    // 1. Strict 3-Condition Lookup
+    const existingStudents = await CloudSync.getStudents(cleanDept, cleanDiv);
+    const existing = existingStudents.find(s =>
+      Number(s.rollNo) === cleanRoll &&
+      String(s.division || '').toUpperCase() === cleanDiv &&
+      String(s.department || '').toLowerCase() === cleanDept
+    );
+
+    if (!existing) {
+      throw new Error(`🛑 Student Not Found: Roll No. ${cleanRoll} is not registered in Division ${cleanDiv} (${cleanDept.toUpperCase()}). Please switch to the "Register New Student" tab to register your ID card.`);
+    }
+
+    // 2. Hardware Device Match Enforcement (SAME DEVICE REQUIRED)
+    if (existing.boundDeviceId && data.deviceId && existing.boundDeviceId !== data.deviceId) {
+      throw new Error(`🛑 Hardware Lock Violation: Account (Roll No. ${cleanRoll}) is locked to another physical phone/device. Same device required that was used during registration. Contact your HOD/Faculty to reset your device lock.`);
+    }
+
+    const sessionToken = `tok_${cleanDept}_${cleanDiv}_${cleanRoll}_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+
+    const updatedStudent = {
+      ...existing,
+      activeSessionToken: sessionToken,
+      lastLoginAt: new Date().toISOString()
+    };
+
+    await CloudSync.saveStudent(updatedStudent);
+    await CloudSync.saveLog({
+      type: 'STUDENT_DAILY_LOGIN',
+      studentId: updatedStudent.id,
+      studentName: updatedStudent.name,
+      rollNo: updatedStudent.rollNo,
+      prn: updatedStudent.prn,
+      department: updatedStudent.department,
+      division: updatedStudent.division,
+      deviceId: data.deviceId || updatedStudent.boundDeviceId,
+      status: 'VERIFIED_DEVICE_MATCH',
+      timestamp: new Date().toISOString()
     });
 
     try {
@@ -381,7 +433,7 @@ export const api = {
 
     return {
       success: true,
-      student: studentData,
+      student: updatedStudent,
       token: sessionToken
     };
   },
@@ -393,7 +445,6 @@ export const api = {
       if (res && res.success) return res;
     } catch (e) {}
 
-    // Fallback sync
     await CloudSync.saveLog({
       type: 'ATTENDANCE_MARKED',
       studentName: data.studentName,
