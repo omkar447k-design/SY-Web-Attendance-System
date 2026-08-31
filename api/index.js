@@ -322,12 +322,27 @@ app.post('/api/student/login', (req, res) => {
 
     let student = db.students.find(s => s.rollNo === numericRoll && s.division === division && (s.department === department || !s.department));
 
-    // STEP 2: Server-side Hardware Device Lock Enforcement
-    if (student && student.boundDeviceId && deviceId) {
-      if (student.boundDeviceId !== deviceId) {
+    // STEP 2: Strict Existence & Device/Identity Verification (Roll No + Dept + Division)
+    if (student) {
+      // 1. Device lock mismatch
+      if (student.boundDeviceId && deviceId && student.boundDeviceId !== deviceId) {
         return res.status(403).json({
           success: false,
-          error: `🛑 Hardware Lock Violation: Account (Roll No. ${numericRoll}) is already locked to another Android phone. Please ask your HOD or Faculty to reset your device lock.`
+          error: `🛑 Account Already Exists: Roll No. ${numericRoll} in ${division} (${department.toUpperCase()}) is already registered and locked to another device. No login allowed. Contact HOD/Admin.`
+        });
+      }
+      // 2. Student Name conflict
+      if (student.name && cleanName && student.name.toLowerCase() !== cleanName.toLowerCase()) {
+        return res.status(403).json({
+          success: false,
+          error: `🛑 Account Conflict: Roll No. ${numericRoll} in ${division} is already registered under "${student.name}". Duplicate registration is prohibited.`
+        });
+      }
+      // 3. PRN conflict
+      if (student.prn && cleanPrn && student.prn !== cleanPrn) {
+        return res.status(403).json({
+          success: false,
+          error: `🛑 PRN Conflict: Roll No. ${numericRoll} in ${division} is registered under PRN "${student.prn}". Duplicate login prohibited.`
         });
       }
     }

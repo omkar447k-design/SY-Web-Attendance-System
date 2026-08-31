@@ -319,7 +319,7 @@ export const api = {
 
   // Student (1-Phone Hardware Binding & Single-Session Lock)
   studentLogin: async (data) => {
-    // 1. Verify against existing cloud roster for hardware lock
+    // 1. Strict Duplicate & Identity Verification (Roll No + Dept + Division)
     const existingStudents = await CloudSync.getStudents(data.department, data.division);
     const existing = existingStudents.find(s =>
       s.rollNo === Number(data.rollNo) &&
@@ -327,9 +327,18 @@ export const api = {
       s.department === data.department
     );
 
-    if (existing && existing.boundDeviceId && data.deviceId) {
-      if (existing.boundDeviceId !== data.deviceId) {
-        throw new Error(`🛑 Hardware Lock Violation: Account (Roll No. ${data.rollNo}) is already bound to another Android phone. Please ask your HOD or Faculty to reset your device lock.`);
+    if (existing) {
+      // 1. Device Mismatch
+      if (existing.boundDeviceId && data.deviceId && existing.boundDeviceId !== data.deviceId) {
+        throw new Error(`🛑 Account Already Exists: Roll No. ${data.rollNo} in ${data.division} (${data.department.toUpperCase()}) is already registered and bound to another device. No login allowed. Contact your HOD/Faculty to reset your record.`);
+      }
+      // 2. Name Mismatch
+      if (existing.name && data.name && existing.name.toLowerCase() !== data.name.trim().toLowerCase()) {
+        throw new Error(`🛑 Account Conflict: Roll No. ${data.rollNo} in ${data.division} already belongs to "${existing.name}". Duplicate login is not permitted.`);
+      }
+      // 3. PRN Mismatch
+      if (existing.prn && data.prn && existing.prn !== data.prn.trim().toUpperCase()) {
+        throw new Error(`🛑 PRN Conflict: Roll No. ${data.rollNo} in ${data.division} is registered under PRN "${existing.prn}". No login allowed.`);
       }
     }
 
