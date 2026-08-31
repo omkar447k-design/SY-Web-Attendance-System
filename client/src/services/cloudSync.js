@@ -10,28 +10,34 @@ let isSyncing = false;
 // Track IDs that were explicitly deleted so cloud merge never resurrects them
 let deletedStudentIds = new Set();
 let deletedSessionIds = new Set();
+let deletedTeacherIds = new Set();
 
-// Restore persisted deletion tombstones
+// Restore persisted deletion tombstones (v3)
 try {
-  const ds = localStorage.getItem('sy_deleted_students_v2');
+  const ds = localStorage.getItem('sy_deleted_students_v3');
   if (ds) deletedStudentIds = new Set(JSON.parse(ds));
 } catch (e) {}
 try {
-  const dl = localStorage.getItem('sy_deleted_sessions_v2');
+  const dl = localStorage.getItem('sy_deleted_sessions_v3');
   if (dl) deletedSessionIds = new Set(JSON.parse(dl));
+} catch (e) {}
+try {
+  const dt = localStorage.getItem('sy_deleted_teachers_v3');
+  if (dt) deletedTeacherIds = new Set(JSON.parse(dt));
 } catch (e) {}
 
 function persistDeletionTombstones() {
   try {
-    localStorage.setItem('sy_deleted_students_v2', JSON.stringify([...deletedStudentIds]));
-    localStorage.setItem('sy_deleted_sessions_v2', JSON.stringify([...deletedSessionIds]));
+    localStorage.setItem('sy_deleted_students_v3', JSON.stringify([...deletedStudentIds]));
+    localStorage.setItem('sy_deleted_sessions_v3', JSON.stringify([...deletedSessionIds]));
+    localStorage.setItem('sy_deleted_teachers_v3', JSON.stringify([...deletedTeacherIds]));
   } catch (e) {}
 }
 
 // 1. Live State Loader — always reads from localStorage for cross-tab freshness
 function getInitialCache() {
   try {
-    const local = localStorage.getItem('sy_cloud_cache_v5');
+    const local = localStorage.getItem('sy_cloud_cache_v6');
     if (local) {
       memoryCache = JSON.parse(local);
       return memoryCache;
@@ -53,7 +59,7 @@ function getInitialCache() {
 function persistLocalState(state) {
   memoryCache = state;
   try {
-    localStorage.setItem('sy_cloud_cache_v5', JSON.stringify(state));
+    localStorage.setItem('sy_cloud_cache_v6', JSON.stringify(state));
   } catch (e) {}
 }
 
@@ -81,7 +87,18 @@ function broadcastToCloudAsync(state) {
     sessions: (state.sessions || []).slice(0, 30),
     logs: (state.logs || []).slice(0, 200),
     hodAccounts: state.hodAccounts || {},
-    teachers: state.teachers || []
+    teachers: (state.teachers || []).map(t => ({
+      id: t.id,
+      name: t.name,
+      department: t.department,
+      subjectName: t.subjectName,
+      divisions: t.divisions,
+      division: t.division,
+      batch: t.batch,
+      password: t.password,
+      role: t.role || 'teacher',
+      registeredAt: t.registeredAt
+    }))
   };
 
   const controller = new AbortController();
@@ -153,12 +170,24 @@ async function revalidateCloudStateInBackground() {
                 }
               });
 
+              // Merge teachers — but NEVER resurrect deleted ones
+              const teacherMap = new Map();
+              (current.teachers || []).forEach(t => {
+                if (!deletedTeacherIds.has(t.id)) teacherMap.set(t.id, t);
+              });
+              (parsed.teachers || []).forEach(t => {
+                if (!deletedTeacherIds.has(t.id)) {
+                  const existing = teacherMap.get(t.id);
+                  teacherMap.set(t.id, { ...(existing || {}), ...t });
+                }
+              });
+
               const mergedState = {
                 students: Array.from(studentMap.values()),
                 sessions: Array.from(sessionMap.values()),
                 logs: (parsed.logs || current.logs || []).filter(l => !deletedStudentIds.has(l.studentId)).slice(0, 500),
                 hodAccounts: hodMap,
-                teachers: parsed.teachers || current.teachers || []
+                teachers: Array.from(teacherMap.values())
               };
 
               persistLocalState(mergedState);
@@ -343,7 +372,7 @@ export const CloudSync = {
     return cleanLog;
   },
 
-  // 5. TEACHERS
+  // 5. TEACHERS & FACULTY
   getTeachers: async (dept = null) => {
     revalidateCloudStateInBackground();
     const state = getInitialCache();
@@ -357,7 +386,11 @@ export const CloudSync = {
   saveTeacher: async (teacher) => {
     const state = getInitialCache();
     state.teachers = state.teachers || [];
-    const idx = state.teachers.findIndex(t => t.id === teacher.id || (t.name === teacher.name && t.department === teacher.department));
+    const idx = state.teachers.findIndex(t => 
+      t.id === teacher.id || 
+      (t.name?.trim().toLowerCase() === teacher.name?.trim().toLowerCase() && 
+       String(t.department || '').toLowerCase() === String(teacher.department || '').toLowerCase())
+    );
     if (idx >= 0) {
       state.teachers[idx] = { ...state.teachers[idx], ...teacher };
     } else {
@@ -366,6 +399,28 @@ export const CloudSync = {
     persistLocalState(state);
     broadcastToCloudAsync(state);
     return teacher;
+  },
+
+  deleteTeacher: async (teacherId) => {
+    deletedTeacherIds.add(teacherId);
+    persistDeletionTombstones();
+
+    const state = getInitialCache();
+    state.teachers = (state.teachers || []).filter(t => t.id !== teacherId);
+    persistLocalState(state);
+    broadcastToCloudAsync(state);
+  },
+
+  resetTeacherPassword: async (teacherId, newPassword = 'password123') => {
+    const state = getInitialCache();
+    state.teachers = (state.teachers || []).map(t => {
+      if (t.id === teacherId) {
+        return { ...t, password: newPassword, passwordResetAt: new Date().toISOString() };
+      }
+      return t;
+    });
+    persistLocalState(state);
+    broadcastToCloudAsync(state);
   },
 
   // 6. FORCE REFRESH (INSTANT SYNC TRIGGER)

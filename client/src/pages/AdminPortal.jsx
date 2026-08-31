@@ -146,15 +146,32 @@ export function AdminPortal({ hodProfile, onLaunchLectureAsHod }) {
   };
 
   const handleResetTeacherPassword = async (teacherId, teacherName) => {
-    if (!window.confirm(`Reset password for professor ${teacherName}? They will be prompted to create a new password on their next login.`)) return;
+    const newPass = window.prompt(`Reset password for professor ${teacherName}:`, 'password123');
+    if (!newPass || newPass.trim().length < 4) {
+      if (newPass !== null) alert('Password must be at least 4 characters');
+      return;
+    }
     try {
-      const res = await api.resetTeacherPassword(teacherId);
+      const res = await api.resetTeacherPassword(teacherId, newPass.trim());
       if (res.success) {
         alert(res.message);
         loadData();
       }
     } catch (err) {
       alert(err.message || 'Failed to reset teacher password');
+    }
+  };
+
+  const handleDeleteTeacher = async (teacherId, teacherName) => {
+    if (!window.confirm(`Remove professor ${teacherName} from this department?`)) return;
+    try {
+      const res = await api.deleteTeacher(teacherId);
+      if (res.success) {
+        setTeachers(prev => prev.filter(t => t.id !== teacherId));
+        loadData();
+      }
+    } catch (err) {
+      alert(err.message || 'Failed to remove teacher');
     }
   };
 
@@ -731,27 +748,39 @@ export function AdminPortal({ hodProfile, onLaunchLectureAsHod }) {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {teachers.length === 0 ? (
                 <div className="col-span-1 sm:col-span-2 lg:col-span-3 p-6 text-center text-slate-400 text-xs font-medium">
-                  No professors have logged in through this department yet.
+                  No professors have registered in this department yet.
                 </div>
               ) : (
                 teachers.map(t => (
-                  <div key={t.id} className="p-4 bg-slate-50 border border-slate-200 flex flex-col justify-between">
+                  <div key={t.id} className="p-4 bg-slate-50 border border-slate-200 flex flex-col justify-between space-y-3">
                     <div>
-                      <span className="text-[10px] uppercase font-bold text-sky-600">{t.role || 'Teacher'}</span>
-                      <h4 className="font-bold text-slate-900 text-sm mt-0.5 truncate">{t.name}</h4>
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] uppercase font-bold text-sky-600">{t.role || 'Faculty'}</span>
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200">
+                          {t.division || 'All Divs'}
+                        </span>
+                      </div>
+                      <h4 className="font-bold text-slate-900 text-sm mt-1 truncate">{t.name}</h4>
                       {t.subjectName && (
                         <p className="text-xs text-slate-700 font-medium mt-1 truncate">📚 {t.subjectName}</p>
                       )}
-                      <p className="text-xs text-slate-500 truncate">{t.email}</p>
                     </div>
 
-                    <div className="mt-3 pt-2 border-t border-slate-200 flex items-center justify-between">
-                      <span className="text-xs font-bold text-emerald-700">● Active</span>
+                    <div className="pt-2 border-t border-slate-200 flex items-center justify-between gap-1">
                       <button
                         onClick={() => handleResetTeacherPassword(t.id, t.name)}
-                        className="text-xs font-semibold px-2 py-1 bg-white hover:bg-rose-50 hover:text-rose-700 text-slate-700 border border-slate-200 transition touch-target"
+                        className="text-xs font-semibold px-2 py-1 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 transition touch-target"
+                        title="Reset Password"
                       >
-                        Reset Password
+                        Reset Pass
+                      </button>
+                      <button
+                        onClick={() => handleDeleteTeacher(t.id, t.name)}
+                        className="text-xs font-semibold px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition touch-target flex items-center space-x-1"
+                        title="Remove Faculty Member"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                        <span>Remove</span>
                       </button>
                     </div>
                   </div>

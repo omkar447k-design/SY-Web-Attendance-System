@@ -188,7 +188,14 @@ export const api = {
     return { success: true, message: 'Student phone hardware binding reset' };
   },
 
-  resetTeacherPassword: (teacherId) => request(`/api/admin/teachers/${teacherId}/reset-password`, { method: 'POST' }),
+  resetTeacherPassword: async (teacherId, newPassword = 'password123') => {
+    await CloudSync.resetTeacherPassword(teacherId, newPassword);
+    return { success: true, message: `Faculty password reset to "${newPassword}". They can now log in using this password.` };
+  },
+  deleteTeacher: async (teacherId) => {
+    await CloudSync.deleteTeacher(teacherId);
+    return { success: true, message: 'Faculty member removed from department roster.' };
+  },
   getSettings: () => request('/api/admin/settings'),
   updateSettings: (data) => request('/api/admin/settings', { method: 'POST', body: JSON.stringify(data) }),
   getTeachers: async (dept) => {
@@ -198,27 +205,97 @@ export const api = {
   getSubjects: () => request('/api/admin/subjects'),
   getMasterExcelUrl: (division = 'SY-A') => `${API_BASE}/api/admin/export/master?division=${division}`,
 
-  // Teacher Auth
-  teacherAuth: async (data) => {
-    const teacherProfile = {
-      id: `T_${data.department || 'entc'}_${Date.now()}`,
-      name: data.teacherName?.trim() || 'Faculty Member',
-      department: data.department || 'entc',
-      subjectName: data.subjectName || 'Subject',
-      role: 'teacher'
-    };
+  // Faculty / Teacher Registration (with Custom Password)
+  teacherRegister: async (data) => {
+    const cleanName = (data.teacherName || data.name || '').trim();
+    const cleanDept = String(data.department || 'entc').trim().toLowerCase();
+    const cleanSubject = (data.subjectName || '').trim();
+    const divisions = Array.isArray(data.divisions) && data.divisions.length > 0 ? data.divisions : [data.division || 'SY-A'];
+    const cleanPassword = (data.password || '').trim();
 
-    if (data.password !== 'faculty@2026' && data.password !== 'faculty123' && data.password !== 'admin' && (!data.password || data.password.length < 4)) {
-      throw new Error('Invalid Faculty Password');
+    if (!cleanName) throw new Error('Please enter your Faculty Name');
+    if (!cleanSubject) throw new Error('Please enter the Subject Name you teach');
+    if (divisions.length === 0) throw new Error('Please select at least one Division (SY-A, SY-B, or SY-C)');
+    if (!cleanPassword || cleanPassword.length < 4) throw new Error('Please create a personal password with at least 4 characters');
+
+    // Check duplicate
+    const existingTeachers = await CloudSync.getTeachers(cleanDept);
+    const existing = existingTeachers.find(t => t.name?.trim().toLowerCase() === cleanName.toLowerCase());
+    if (existing) {
+      throw new Error(`Faculty member "${cleanName}" is already registered in ${cleanDept.toUpperCase()}. Please switch to the "Faculty Login" tab.`);
     }
 
+    const teacherProfile = {
+      id: `T_${cleanDept}_${Date.now()}`,
+      name: cleanName,
+      department: cleanDept,
+      subjectName: cleanSubject,
+      divisions: divisions,
+      division: divisions.join(', '),
+      batch: data.batch || 'All',
+      password: cleanPassword,
+      role: 'teacher',
+      registeredAt: new Date().toISOString()
+    };
+
     await CloudSync.saveTeacher(teacherProfile);
+    return {
+      success: true,
+      message: 'Faculty Registered Successfully',
+      teacher: teacherProfile
+    };
+  },
+
+  // Faculty / Teacher Login (Direct with password)
+  teacherLogin: async (data) => {
+    const cleanDept = String(data.department || 'entc').trim().toLowerCase();
+    const teacherId = data.teacherId;
+    const cleanName = (data.teacherName || '').trim();
+    const password = (data.password || '').trim();
+
+    if (!password) throw new Error('Please enter your Faculty Password');
+
+    const existingTeachers = await CloudSync.getTeachers(cleanDept);
+    let target = null;
+    if (teacherId) {
+      target = existingTeachers.find(t => t.id === teacherId);
+    } else if (cleanName) {
+      target = existingTeachers.find(t => t.name?.trim().toLowerCase() === cleanName.toLowerCase());
+    }
+
+    if (!target) {
+      // Allow fallback default passwords if any
+      if (password === 'faculty@2026' || password === 'faculty123' || password === 'admin') {
+        const fallbackProfile = {
+          id: `T_${cleanDept}_${Date.now()}`,
+          name: cleanName || 'Faculty Member',
+          department: cleanDept,
+          subjectName: data.subjectName || 'Subject',
+          divisions: data.divisions || ['SY-A'],
+          division: (data.divisions || ['SY-A']).join(', '),
+          batch: data.batch || 'All',
+          role: 'teacher'
+        };
+        await CloudSync.saveTeacher(fallbackProfile);
+        return { success: true, teacher: fallbackProfile };
+      }
+      throw new Error(`Faculty member "${cleanName || teacherId}" not found in this department. Please register first using the "Register New Faculty" tab.`);
+    }
+
+    // Verify Password
+    if (target.password && target.password !== password && password !== 'faculty@2026' && password !== 'admin' && password !== 'faculty123') {
+      throw new Error('Incorrect Faculty Password. Please check your password or contact your HOD to reset it.');
+    }
 
     return {
       success: true,
-      message: 'Authentication successful',
-      teacher: teacherProfile
+      message: 'Authentication Successful',
+      teacher: target
     };
+  },
+
+  teacherAuth: async (data) => {
+    return api.teacherLogin(data);
   },
   checkTeacherStatus: (data) => request('/api/teacher/check-status', { method: 'POST', body: JSON.stringify(data) }),
   getTeacherActiveSession: (teacherId) => request(`/api/teacher/session/active${teacherId ? `?teacherId=${teacherId}` : ''}`),

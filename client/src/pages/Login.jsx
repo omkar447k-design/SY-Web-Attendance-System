@@ -211,15 +211,21 @@ export function Login({ onLoginSuccess }) {
   const [gatekeeperCode, setGatekeeperCode] = useState('');
   const [hodDeptList, setHodDeptList] = useState([]);
   
-  const [teacherName, setTeacherName] = useState('');
-  const [teacherDept, setTeacherDept] = useState('entc');
-  const [teacherSubject, setTeacherSubject] = useState('');
-  const [selectedDivisions, setSelectedDivisions] = useState(['SY-A']);
-  const [teacherBatch, setTeacherBatch] = useState('All');
-  const [teacherIsFirstTime, setTeacherIsFirstTime] = useState(false);
-  const [teacherPassword, setTeacherPassword] = useState('');
-  const [teacherNewPassword, setTeacherNewPassword] = useState('');
-  const [teacherConfirmPassword, setTeacherConfirmPassword] = useState('');
+  // --- FACULTY STATE ---
+  const [facultySubTab, setFacultySubTab] = useState('login'); // 'login' vs 'register'
+  const [deptTeachersList, setDeptTeachersList] = useState([]);
+  const [selectedTeacherId, setSelectedTeacherId] = useState('');
+  const [teacherLoginDept, setTeacherLoginDept] = useState('entc');
+  const [teacherLoginPassword, setTeacherLoginPassword] = useState('');
+
+  // Faculty Register fields
+  const [teacherRegDept, setTeacherRegDept] = useState('entc');
+  const [teacherRegName, setTeacherRegName] = useState('');
+  const [teacherRegSubject, setTeacherRegSubject] = useState('');
+  const [teacherRegDivisions, setTeacherRegDivisions] = useState(['SY-A']);
+  const [teacherRegBatch, setTeacherRegBatch] = useState('All');
+  const [teacherRegPassword, setTeacherRegPassword] = useState('');
+  const [teacherRegConfirmPassword, setTeacherRegConfirmPassword] = useState('');
 
   const [selectedHodDept, setSelectedHodDept] = useState('entc');
   const [hodName, setHodName] = useState('');
@@ -233,6 +239,20 @@ export function Login({ onLoginSuccess }) {
   const [adminError, setAdminError] = useState('');
   const [regSuccessData, setRegSuccessData] = useState(null);
 
+  const loadDeptTeachers = async (dept) => {
+    try {
+      const res = await api.getTeachers(dept);
+      if (res.success && Array.isArray(res.data)) {
+        setDeptTeachersList(res.data);
+        if (res.data.length > 0) {
+          setSelectedTeacherId(res.data[0].id);
+        } else {
+          setSelectedTeacherId('');
+        }
+      }
+    } catch (e) {}
+  };
+
   useEffect(() => {
     if (window.location.hash === '#admin' || window.location.pathname === '/admin') {
       setShowAdminModal(true);
@@ -240,14 +260,10 @@ export function Login({ onLoginSuccess }) {
   }, []);
 
   useEffect(() => {
-    if (modalMode === 'teacher' && teacherName.trim()) {
-      api.checkTeacherStatus({ teacherName: teacherName.trim(), department: teacherDept })
-        .then(res => {
-          if (res.success) setTeacherIsFirstTime(res.isFirstTime);
-        })
-        .catch(() => {});
+    if (modalMode === 'teacher') {
+      loadDeptTeachers(teacherLoginDept);
     }
-  }, [teacherName, teacherDept, modalMode]);
+  }, [modalMode, teacherLoginDept, facultySubTab]);
 
   const updateSelectedHodDepartment = (deptId, deptList = hodDeptList) => {
     setSelectedHodDept(deptId);
@@ -263,13 +279,13 @@ export function Login({ onLoginSuccess }) {
     }
   };
 
-  const toggleDivisionSelection = (div) => {
-    if (selectedDivisions.includes(div)) {
-      if (selectedDivisions.length > 1) {
-        setSelectedDivisions(selectedDivisions.filter(d => d !== div));
+  const toggleTeacherRegDivision = (div) => {
+    if (teacherRegDivisions.includes(div)) {
+      if (teacherRegDivisions.length > 1) {
+        setTeacherRegDivisions(teacherRegDivisions.filter(d => d !== div));
       }
     } else {
-      setSelectedDivisions([...selectedDivisions, div]);
+      setTeacherRegDivisions([...teacherRegDivisions, div]);
     }
   };
 
@@ -471,51 +487,62 @@ export function Login({ onLoginSuccess }) {
     }
   };
 
-  const handleTeacherLogin = async (e) => {
+  const handleTeacherLoginDirect = async (e) => {
     e.preventDefault();
-    if (!teacherName.trim()) return setAdminError('Please enter your Faculty Name');
-    if (!teacherSubject.trim()) return setAdminError('Please enter the Subject Name you teach');
-    if (selectedDivisions.length === 0) return setAdminError('Please select at least one Division (SY-A, SY-B, or SY-C)');
-
-    if (teacherIsFirstTime) {
-      if (!teacherNewPassword || teacherNewPassword.length < 4) {
-        return setAdminError('Please create a password with at least 4 characters');
-      }
-      if (teacherNewPassword !== teacherConfirmPassword) {
-        return setAdminError('Passwords do not match');
-      }
-    } else if (!teacherPassword) {
-      return setAdminError('Please enter your Faculty Password');
-    }
+    if (!selectedTeacherId) return setAdminError('Please select a registered faculty member');
+    if (!teacherLoginPassword) return setAdminError('Please enter your Faculty Password');
 
     setAdminError('');
     setLoading(true);
     try {
-      const authRes = await api.teacherAuth({
-        teacherName: teacherName.trim(),
-        department: teacherDept,
-        subjectName: teacherSubject.trim(),
-        password: teacherPassword,
-        newPassword: teacherNewPassword,
-        isFirstTimeSetup: teacherIsFirstTime
+      const res = await api.teacherLogin({
+        department: teacherLoginDept,
+        teacherId: selectedTeacherId,
+        password: teacherLoginPassword
       });
 
-      if (authRes.success) {
+      if (res.success && res.teacher) {
         setShowAdminModal(false);
-        const teacherProfile = {
-          id: authRes.teacher?.id || `T_${teacherDept}_${Date.now()}`,
-          name: teacherName.trim(),
-          department: teacherDept,
-          divisions: selectedDivisions,
-          division: selectedDivisions.join(', '),
-          subjectName: teacherSubject.trim(),
-          batch: teacherBatch,
-          role: 'teacher'
-        };
-        onLoginSuccess('teacher', teacherProfile);
+        onLoginSuccess('teacher', res.teacher);
       }
     } catch (err) {
-      setAdminError(err.message || 'Faculty Authentication Failed.');
+      setAdminError(err.message || 'Faculty Login Failed. Incorrect password or not registered.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleTeacherRegistration = async (e) => {
+    e.preventDefault();
+    if (!teacherRegName.trim()) return setAdminError('Please enter your Faculty Full Name');
+    if (!teacherRegSubject.trim()) return setAdminError('Please enter the Subject Name you teach');
+    if (teacherRegDivisions.length === 0) return setAdminError('Please select at least one Division (SY-A, SY-B, or SY-C)');
+    if (!teacherRegPassword || teacherRegPassword.length < 4) return setAdminError('Please create a personal password with at least 4 characters');
+    if (teacherRegPassword !== teacherRegConfirmPassword) return setAdminError('Passwords do not match');
+
+    setAdminError('');
+    setLoading(true);
+    try {
+      const res = await api.teacherRegister({
+        teacherName: teacherRegName.trim(),
+        department: teacherRegDept,
+        subjectName: teacherRegSubject.trim(),
+        divisions: teacherRegDivisions,
+        division: teacherRegDivisions.join(', '),
+        batch: teacherRegBatch,
+        password: teacherRegPassword
+      });
+
+      if (res.success && res.teacher) {
+        try {
+          confetti({ particleCount: 80, spread: 70, origin: { y: 0.6 } });
+        } catch (e) {}
+
+        setShowAdminModal(false);
+        onLoginSuccess('teacher', res.teacher);
+      }
+    } catch (err) {
+      setAdminError(err.message || 'Faculty Registration Failed.');
     } finally {
       setLoading(false);
     }
@@ -1287,96 +1314,240 @@ export function Login({ onLoginSuccess }) {
                   </form>
                 )}
 
-                {/* TEACHER / FACULTY LOGIN FORM */}
+                {/* TEACHER / FACULTY SECTION (LOGIN vs REGISTER) */}
                 {modalMode === 'teacher' && (
-                  <form onSubmit={handleTeacherLogin} className="space-y-4">
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                        Department
-                      </label>
-                      <select
-                        value={teacherDept}
-                        onChange={(e) => setTeacherDept(e.target.value)}
-                        className="w-full bg-white border border-slate-300 px-3 py-2.5 text-xs sm:text-sm font-bold text-slate-900 outline-none focus:border-slate-800"
+                  <div className="space-y-4">
+                    {/* Sub-tab switcher: Login vs Register */}
+                    <div className="flex border border-slate-300 p-1 bg-slate-100">
+                      <button
+                        type="button"
+                        onClick={() => { setFacultySubTab('login'); setAdminError(''); }}
+                        className={`flex-1 py-2 text-xs font-bold transition uppercase tracking-wider flex items-center justify-center space-x-1 ${
+                          facultySubTab === 'login'
+                            ? 'bg-slate-900 text-white shadow-sm'
+                            : 'text-slate-600 hover:text-slate-900 bg-transparent'
+                        }`}
                       >
-                        {DEPARTMENTS.map(d => (
-                          <option key={d.id} value={d.id}>{d.name}</option>
-                        ))}
-                      </select>
+                        <LogIn className="w-3.5 h-3.5" />
+                        <span>Faculty Login</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setFacultySubTab('register'); setAdminError(''); }}
+                        className={`flex-1 py-2 text-xs font-bold transition uppercase tracking-wider flex items-center justify-center space-x-1 ${
+                          facultySubTab === 'register'
+                            ? 'bg-slate-900 text-white shadow-sm'
+                            : 'text-slate-600 hover:text-slate-900 bg-transparent'
+                        }`}
+                      >
+                        <UserPlus className="w-3.5 h-3.5" />
+                        <span>Register New Faculty</span>
+                      </button>
                     </div>
 
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                        Faculty Name
-                      </label>
-                      <input
-                        type="text"
-                        value={teacherName}
-                        onChange={(e) => setTeacherName(e.target.value)}
-                        placeholder="e.g. Prof. R. K. Sharma"
-                        className="w-full bg-white border border-slate-300 px-3.5 py-2.5 text-sm font-bold text-slate-900 focus:border-slate-800 outline-none"
-                        required
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                        Subject Name
-                      </label>
-                      <input
-                        type="text"
-                        value={teacherSubject}
-                        onChange={(e) => setTeacherSubject(e.target.value)}
-                        placeholder="e.g. Digital Signal Processing"
-                        className="w-full bg-white border border-slate-300 px-3.5 py-2.5 text-sm font-bold text-slate-900 focus:border-slate-800 outline-none"
-                        required
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                        Select Divisions
-                      </label>
-                      <div className="grid grid-cols-3 gap-2">
-                        {DIVISIONS.map(div => (
-                          <button
-                            key={div}
-                            type="button"
-                            onClick={() => toggleDivisionSelection(div)}
-                            className={`py-2 text-xs font-bold border transition ${
-                              selectedDivisions.includes(div)
-                                ? 'bg-slate-900 text-white border-slate-900'
-                                : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50'
-                            }`}
+                    {/* 1. FACULTY LOGIN TAB */}
+                    {facultySubTab === 'login' && (
+                      <form onSubmit={handleTeacherLoginDirect} className="space-y-4">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                            Department
+                          </label>
+                          <select
+                            value={teacherLoginDept}
+                            onChange={(e) => setTeacherLoginDept(e.target.value)}
+                            className="w-full bg-white border border-slate-300 px-3 py-2.5 text-xs sm:text-sm font-bold text-slate-900 outline-none focus:border-slate-800"
                           >
-                            {div}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
+                            {DEPARTMENTS.map(d => (
+                              <option key={d.id} value={d.id}>{d.name}</option>
+                            ))}
+                          </select>
+                        </div>
 
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                        Faculty Password
-                      </label>
-                      <input
-                        type="password"
-                        value={teacherPassword}
-                        onChange={(e) => setTeacherPassword(e.target.value)}
-                        placeholder="Enter Faculty Password"
-                        className="w-full bg-white border border-slate-300 px-3.5 py-2.5 text-sm font-bold text-slate-900 focus:border-slate-800 outline-none"
-                        required
-                      />
-                    </div>
+                        {deptTeachersList.length > 0 ? (
+                          <>
+                            <div>
+                              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center justify-between">
+                                <span>Select Registered Faculty</span>
+                                <span className="text-[11px] text-emerald-700 font-semibold">{deptTeachersList.length} Registered</span>
+                              </label>
+                              <select
+                                value={selectedTeacherId}
+                                onChange={(e) => setSelectedTeacherId(e.target.value)}
+                                className="w-full bg-white border border-slate-300 px-3 py-2.5 text-xs sm:text-sm font-bold text-slate-900 outline-none focus:border-slate-800"
+                                required
+                              >
+                                {deptTeachersList.map(t => (
+                                  <option key={t.id} value={t.id}>
+                                    {t.name} — {t.subjectName} ({t.division || 'All Divisions'})
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
 
-                    <button
-                      type="submit"
-                      disabled={loading}
-                      className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs uppercase tracking-wide transition"
-                    >
-                      {loading ? 'Authenticating...' : 'Enter Faculty Portal'}
-                    </button>
-                  </form>
+                            {/* Faculty Info Card */}
+                            {(() => {
+                              const activeTeacher = deptTeachersList.find(t => t.id === selectedTeacherId) || deptTeachersList[0];
+                              if (!activeTeacher) return null;
+                              return (
+                                <div className="p-3 bg-slate-50 border border-slate-200 text-xs space-y-1">
+                                  <div className="flex justify-between">
+                                    <span className="text-slate-500 font-medium">Subject:</span>
+                                    <span className="font-bold text-slate-900">{activeTeacher.subjectName}</span>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className="text-slate-500 font-medium">Assigned Divisions:</span>
+                                    <span className="font-bold text-slate-900">{activeTeacher.division || 'SY-A'}</span>
+                                  </div>
+                                </div>
+                              );
+                            })()}
+
+                            <div>
+                              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                                Personal Password
+                              </label>
+                              <input
+                                type="password"
+                                value={teacherLoginPassword}
+                                onChange={(e) => setTeacherLoginPassword(e.target.value)}
+                                placeholder="Enter your personal faculty password"
+                                className="w-full bg-white border border-slate-300 px-3.5 py-2.5 text-sm font-bold text-slate-900 focus:border-slate-800 outline-none"
+                                required
+                              />
+                            </div>
+
+                            <button
+                              type="submit"
+                              disabled={loading}
+                              className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs uppercase tracking-wide transition cursor-pointer"
+                            >
+                              {loading ? 'Authenticating...' : '🚀 Launch Attendance Portal'}
+                            </button>
+                          </>
+                        ) : (
+                          <div className="p-6 bg-slate-50 border border-dashed border-slate-300 text-center space-y-3">
+                            <p className="text-xs text-slate-600 font-medium">
+                              No professors have registered in this department yet.
+                            </p>
+                            <button
+                              type="button"
+                              onClick={() => { setFacultySubTab('register'); setAdminError(''); }}
+                              className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold uppercase tracking-wider transition"
+                            >
+                              ✨ Register as Faculty Member
+                            </button>
+                          </div>
+                        )}
+                      </form>
+                    )}
+
+                    {/* 2. FACULTY REGISTRATION TAB */}
+                    {facultySubTab === 'register' && (
+                      <form onSubmit={handleTeacherRegistration} className="space-y-3.5">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                            Department
+                          </label>
+                          <select
+                            value={teacherRegDept}
+                            onChange={(e) => setTeacherRegDept(e.target.value)}
+                            className="w-full bg-white border border-slate-300 px-3 py-2 text-xs sm:text-sm font-bold text-slate-900 outline-none focus:border-slate-800"
+                          >
+                            {DEPARTMENTS.map(d => (
+                              <option key={d.id} value={d.id}>{d.name}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                            Faculty Full Name
+                          </label>
+                          <input
+                            type="text"
+                            value={teacherRegName}
+                            onChange={(e) => setTeacherRegName(e.target.value)}
+                            placeholder="e.g. Prof. Rajesh Sharma / Dr. Patil"
+                            className="w-full bg-white border border-slate-300 px-3 py-2 text-xs sm:text-sm font-bold text-slate-900 focus:border-slate-800 outline-none"
+                            required
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                            Subject Name You Teach
+                          </label>
+                          <input
+                            type="text"
+                            value={teacherRegSubject}
+                            onChange={(e) => setTeacherRegSubject(e.target.value)}
+                            placeholder="e.g. Digital Signal Processing / Data Structures"
+                            className="w-full bg-white border border-slate-300 px-3 py-2 text-xs sm:text-sm font-bold text-slate-900 focus:border-slate-800 outline-none"
+                            required
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                            Assigned Divisions
+                          </label>
+                          <div className="grid grid-cols-3 gap-2">
+                            {DIVISIONS.map(div => (
+                              <button
+                                key={div}
+                                type="button"
+                                onClick={() => toggleTeacherRegDivision(div)}
+                                className={`py-2 text-xs font-bold border transition ${
+                                  teacherRegDivisions.includes(div)
+                                    ? 'bg-slate-900 text-white border-slate-900'
+                                    : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50'
+                                }`}
+                              >
+                                {div}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                              Set Password
+                            </label>
+                            <input
+                              type="password"
+                              value={teacherRegPassword}
+                              onChange={(e) => setTeacherRegPassword(e.target.value)}
+                              placeholder="Min 4 chars"
+                              className="w-full bg-white border border-slate-300 px-3 py-2 text-xs font-bold text-slate-900 focus:border-slate-800 outline-none"
+                              required
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                              Confirm Password
+                            </label>
+                            <input
+                              type="password"
+                              value={teacherRegConfirmPassword}
+                              onChange={(e) => setTeacherRegConfirmPassword(e.target.value)}
+                              placeholder="Re-type"
+                              className="w-full bg-white border border-slate-300 px-3 py-2 text-xs font-bold text-slate-900 focus:border-slate-800 outline-none"
+                              required
+                            />
+                          </div>
+                        </div>
+
+                        <button
+                          type="submit"
+                          disabled={loading}
+                          className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs uppercase tracking-wide transition cursor-pointer"
+                        >
+                          {loading ? 'Registering Faculty...' : '✨ Register & Launch Attendance'}
+                        </button>
+                      </form>
+                    )}
+                  </div>
                 )}
 
               </div>
