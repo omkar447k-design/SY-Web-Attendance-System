@@ -787,32 +787,34 @@ export function Login({ onLoginSuccess }) {
               />
             </div>
 
-            {/* 7. MANDATORY BIOMETRIC SECURITY BANNER (Apple Face ID / Android Fingerprint / Passcode) */}
-            <div className="p-3 bg-slate-50 border border-slate-200 flex items-center justify-between">
-              <div className="flex items-center space-x-2.5 min-w-0">
-                <div className="w-7 h-7 bg-sky-50 border border-sky-200 flex items-center justify-center flex-shrink-0">
-                  {getDeviceType().type === 'ios' ? (
-                    <ScanFace className="w-4 h-4 text-sky-600" />
-                  ) : (
-                    <Smartphone className="w-4 h-4 text-sky-600" />
-                  )}
+            {/* 7. BIOMETRIC SECURITY BANNER (Mobile Only: Apple Face ID / Android Fingerprint) */}
+            {getDeviceType().isMobile && (
+              <div className="p-3 bg-slate-50 border border-slate-200 flex items-center justify-between">
+                <div className="flex items-center space-x-2.5 min-w-0">
+                  <div className="w-7 h-7 bg-sky-50 border border-sky-200 flex items-center justify-center flex-shrink-0">
+                    {getDeviceType().type === 'ios' ? (
+                      <ScanFace className="w-4 h-4 text-sky-600" />
+                    ) : (
+                      <Smartphone className="w-4 h-4 text-sky-600" />
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-xs font-bold text-slate-900 truncate flex items-center space-x-1.5">
+                      <span>{getDeviceType().biometricName}</span>
+                      <span className="text-[9px] text-sky-700 bg-sky-50 px-1 py-0.5 border border-sky-200 font-bold uppercase">
+                        Mobile Lock
+                      </span>
+                    </div>
+                    <div className="text-[10px] text-slate-500 font-medium truncate">
+                      {getDeviceType().type === 'ios' ? 'Apple Face ID & iPhone Passcode Lock' : 'Biometric Sensor & Screen Lock PIN'}
+                    </div>
+                  </div>
                 </div>
-                <div className="min-w-0">
-                  <div className="text-xs font-bold text-slate-900 truncate flex items-center space-x-1.5">
-                    <span>{getDeviceType().biometricName}</span>
-                    <span className="text-[9px] text-sky-700 bg-sky-50 px-1 py-0.5 border border-sky-200 font-bold uppercase">
-                      Mandatory
-                    </span>
-                  </div>
-                  <div className="text-[10px] text-slate-500 font-medium truncate">
-                    {getDeviceType().type === 'ios' ? 'Apple Face ID & iPhone Passcode Lock' : 'Biometric Sensor & Screen Lock PIN'}
-                  </div>
+                <div className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-1 border border-emerald-200 flex-shrink-0 ml-2">
+                  ● Enforced
                 </div>
               </div>
-              <div className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-1 border border-emerald-200 flex-shrink-0 ml-2">
-                ● Enforced
-              </div>
-            </div>
+            )}
 
             <div className="pt-2">
               <button
@@ -822,7 +824,11 @@ export function Login({ onLoginSuccess }) {
               >
                 <ShieldCheck className="w-4 h-4 text-sky-400 flex-shrink-0" />
                 <span className="truncate">
-                  {loading ? 'Verifying Biometrics & Entering...' : `Verify ${getDeviceType().type === 'ios' ? 'Face ID' : 'Fingerprint'} & Enter Portal`}
+                  {loading
+                    ? 'Validating & Entering...'
+                    : getDeviceType().isMobile
+                    ? `Verify ${getDeviceType().type === 'ios' ? 'Face ID' : 'Fingerprint'} & Enter Portal`
+                    : 'Verify All Fields & Enter Student Portal'}
                 </span>
                 <ArrowRight className="w-4 h-4 flex-shrink-0" />
               </button>
@@ -830,7 +836,9 @@ export function Login({ onLoginSuccess }) {
 
             <div className="text-center pt-0.5">
               <p className="text-[11px] text-slate-500 font-medium">
-                🔒 1-Device Binding: Hardware lock is permanent on this {getDeviceType().name}.
+                {getDeviceType().isMobile
+                  ? `🔒 1-Device Binding: Hardware lock is permanent on this ${getDeviceType().name}.`
+                  : '💻 Desktop Access: Standard Physical ID Verification Active.'}
               </p>
             </div>
           </form>

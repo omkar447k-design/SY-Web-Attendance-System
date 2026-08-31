@@ -1,21 +1,22 @@
 // UNIVERSAL HARDWARE BIOMETRICS & FINGERPRINTING ENGINE
-// - iOS (iPhone / iPad): Apple Face ID / Touch ID / Device Passcode
-// - Android: Native Fingerprint Sensor / Screen PIN / Pattern
-// - Desktop (Windows / Mac): Windows Hello / Touch ID / PIN
-// - Hardware Lock: FingerprintJS v4 + Hardware Canvas/WebGL Engine
+// - Mobile (iPhone / iPad): Apple Face ID / Touch ID / Device Passcode
+// - Mobile (Android): Native Fingerprint Sensor / Screen PIN
+// - Desktop / PC / Laptop (Windows / Mac / Linux): Standard Direct Access (No Biometric Lock)
+// - Hardware Engine: FingerprintJS v4 + Hardware Canvas/WebGL Engine
 
 export function getDeviceType() {
   const ua = navigator.userAgent || '';
   const isIos = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   const isAndroid = /android/i.test(ua);
+  const isMobile = isIos || isAndroid;
   const isMac = /macintosh|mac os x/i.test(ua) && !isIos;
   const isWindows = /windows/i.test(ua);
 
-  if (isIos) return { type: 'ios', name: 'iPhone / iOS Device', biometricName: 'Apple Face ID / Touch ID' };
-  if (isAndroid) return { type: 'android', name: 'Android Phone', biometricName: 'Android Fingerprint Sensor' };
-  if (isMac) return { type: 'mac', name: 'Apple Mac', biometricName: 'Mac Touch ID / Password' };
-  if (isWindows) return { type: 'windows', name: 'Windows PC', biometricName: 'Windows Hello / PIN' };
-  return { type: 'other', name: 'Hardware Device', biometricName: 'Device Biometrics / PIN' };
+  if (isIos) return { type: 'ios', isMobile: true, name: 'iPhone / iOS Device', biometricName: 'Apple Face ID / Touch ID' };
+  if (isAndroid) return { type: 'android', isMobile: true, name: 'Android Phone', biometricName: 'Android Fingerprint Sensor' };
+  if (isMac) return { type: 'mac', isMobile: false, name: 'Apple Mac Laptop', biometricName: 'Mac OS' };
+  if (isWindows) return { type: 'windows', isMobile: false, name: 'Windows PC / Laptop', biometricName: 'Windows OS' };
+  return { type: 'other', isMobile: false, name: 'PC / Laptop', biometricName: 'Desktop Browser' };
 }
 
 export async function getDeviceIdentity() {
@@ -103,12 +104,16 @@ export async function getDeviceIdentity() {
     fingerprint: visitorId,
     deviceType: device.type,
     deviceName: device.name,
-    biometricName: device.biometricName
+    biometricName: device.biometricName,
+    isMobile: device.isMobile
   };
 }
 
-// 3. COMPULSORY NATIVE BIOMETRIC / DEVICE PASSCODE AUTHENTICATION (WebAuthn)
+// 3. BIOMETRIC AUTHENTICATION (Active on Mobile Phones: Apple Face ID / Android Fingerprint)
 export async function checkBiometricsAvailable() {
+  const device = getDeviceType();
+  if (!device.isMobile) return false;
+
   if (typeof window !== 'undefined' && window.PublicKeyCredential) {
     try {
       const available = await window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
@@ -123,7 +128,16 @@ export async function checkBiometricsAvailable() {
 export async function promptCompulsoryDeviceAuth(studentName = 'Student') {
   const device = getDeviceType();
 
-  // If WebAuthn is supported by browser, trigger native Face ID / Fingerprint / Passcode prompt
+  // PC / Laptop / Windows / Mac -> Skip Biometric Prompt Completely!
+  if (!device.isMobile) {
+    return {
+      success: true,
+      method: `${device.name} (Direct Access)`,
+      verifiedAt: new Date().toISOString()
+    };
+  }
+
+  // Mobile Phones Only (Apple Face ID / Android Fingerprint Sensor)
   if (typeof window !== 'undefined' && window.PublicKeyCredential) {
     const challenge = new Uint8Array(32);
     window.crypto.getRandomValues(challenge);
@@ -147,8 +161,8 @@ export async function promptCompulsoryDeviceAuth(studentName = 'Student') {
         { alg: -257, type: 'public-key' } // RS256
       ],
       authenticatorSelection: {
-        authenticatorAttachment: 'platform', // Physical phone hardware (Face ID / Fingerprint / Passcode)
-        userVerification: 'required'        // STRICT COMPULSORY
+        authenticatorAttachment: 'platform', // Phone hardware sensor
+        userVerification: 'required'
       },
       timeout: 60000,
       attestation: 'none'
@@ -167,14 +181,12 @@ export async function promptCompulsoryDeviceAuth(studentName = 'Student') {
       };
     } catch (err) {
       if (err.name === 'NotAllowedError') {
-        throw new Error(`🛑 Authentication Cancelled: ${device.biometricName} or Phone Passcode is mandatory to enter.`);
+        throw new Error(`🛑 Authentication Cancelled: ${device.biometricName} or Phone Passcode is required on mobile phones.`);
       }
-      // If platform authenticator had a temporary glitch, fallback to hardware key validation
-      console.warn('Biometric prompt note:', err.message);
+      console.warn('Mobile biometric note:', err.message);
     }
   }
 
-  // Fallback verified via hardware cryptographic binding
   return {
     success: true,
     method: `${device.name} Hardware Signature`,
