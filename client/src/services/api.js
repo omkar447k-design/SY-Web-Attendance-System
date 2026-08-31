@@ -205,18 +205,16 @@ export const api = {
   getSubjects: () => request('/api/admin/subjects'),
   getMasterExcelUrl: (division = 'SY-A') => `${API_BASE}/api/admin/export/master?division=${division}`,
 
-  // Faculty / Teacher Registration (with Custom Password)
+  // Faculty / Teacher Registration (Instant 1-Click Profile Creation)
   teacherRegister: async (data) => {
     const cleanName = (data.teacherName || data.name || '').trim();
     const cleanDept = String(data.department || 'entc').trim().toLowerCase();
     const cleanSubject = (data.subjectName || '').trim();
     const divisions = Array.isArray(data.divisions) && data.divisions.length > 0 ? data.divisions : [data.division || 'SY-A'];
-    const cleanPassword = (data.password || '').trim();
 
     if (!cleanName) throw new Error('Please enter your Faculty Name');
     if (!cleanSubject) throw new Error('Please enter the Subject Name you teach');
     if (divisions.length === 0) throw new Error('Please select at least one Division (SY-A, SY-B, or SY-C)');
-    if (!cleanPassword || cleanPassword.length < 4) throw new Error('Please create a personal password with at least 4 characters');
 
     // Check duplicate
     const existingTeachers = await CloudSync.getTeachers(cleanDept);
@@ -233,7 +231,6 @@ export const api = {
       divisions: divisions,
       division: divisions.join(', '),
       batch: data.batch || 'All',
-      password: cleanPassword,
       role: 'teacher',
       registeredAt: new Date().toISOString()
     };
@@ -246,14 +243,11 @@ export const api = {
     };
   },
 
-  // Faculty / Teacher Login (Direct with password)
+  // Faculty / Teacher 1-Click Direct Launch
   teacherLogin: async (data) => {
     const cleanDept = String(data.department || 'entc').trim().toLowerCase();
     const teacherId = data.teacherId;
     const cleanName = (data.teacherName || '').trim();
-    const password = (data.password || '').trim();
-
-    if (!password) throw new Error('Please enter your Faculty Password');
 
     const existingTeachers = await CloudSync.getTeachers(cleanDept);
     let target = null;
@@ -264,32 +258,27 @@ export const api = {
     }
 
     if (!target) {
-      // Allow fallback default passwords if any
-      if (password === 'faculty@2026' || password === 'faculty123' || password === 'admin') {
-        const fallbackProfile = {
+      if (cleanName) {
+        const directProfile = {
           id: `T_${cleanDept}_${Date.now()}`,
-          name: cleanName || 'Faculty Member',
+          name: cleanName,
           department: cleanDept,
           subjectName: data.subjectName || 'Subject',
           divisions: data.divisions || ['SY-A'],
           division: (data.divisions || ['SY-A']).join(', '),
           batch: data.batch || 'All',
-          role: 'teacher'
+          role: 'teacher',
+          registeredAt: new Date().toISOString()
         };
-        await CloudSync.saveTeacher(fallbackProfile);
-        return { success: true, teacher: fallbackProfile };
+        await CloudSync.saveTeacher(directProfile);
+        return { success: true, teacher: directProfile };
       }
-      throw new Error(`Faculty member "${cleanName || teacherId}" not found in this department. Please register first using the "Register New Faculty" tab.`);
-    }
-
-    // Verify Password
-    if (target.password && target.password !== password && password !== 'faculty@2026' && password !== 'admin' && password !== 'faculty123') {
-      throw new Error('Incorrect Faculty Password. Please check your password or contact your HOD to reset it.');
+      throw new Error(`Faculty member not found in this department. Please register first using the "Register New Faculty" tab.`);
     }
 
     return {
       success: true,
-      message: 'Authentication Successful',
+      message: 'Faculty Launched Successfully',
       teacher: target
     };
   },

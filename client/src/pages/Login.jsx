@@ -216,7 +216,6 @@ export function Login({ onLoginSuccess }) {
   const [deptTeachersList, setDeptTeachersList] = useState([]);
   const [selectedTeacherId, setSelectedTeacherId] = useState('');
   const [teacherLoginDept, setTeacherLoginDept] = useState('entc');
-  const [teacherLoginPassword, setTeacherLoginPassword] = useState('');
 
   // Faculty Register fields
   const [teacherRegDept, setTeacherRegDept] = useState('entc');
@@ -224,8 +223,6 @@ export function Login({ onLoginSuccess }) {
   const [teacherRegSubject, setTeacherRegSubject] = useState('');
   const [teacherRegDivisions, setTeacherRegDivisions] = useState(['SY-A']);
   const [teacherRegBatch, setTeacherRegBatch] = useState('All');
-  const [teacherRegPassword, setTeacherRegPassword] = useState('');
-  const [teacherRegConfirmPassword, setTeacherRegConfirmPassword] = useState('');
 
   const [selectedHodDept, setSelectedHodDept] = useState('entc');
   const [hodName, setHodName] = useState('');
@@ -490,15 +487,13 @@ export function Login({ onLoginSuccess }) {
   const handleTeacherLoginDirect = async (e) => {
     e.preventDefault();
     if (!selectedTeacherId) return setAdminError('Please select a registered faculty member');
-    if (!teacherLoginPassword) return setAdminError('Please enter your Faculty Password');
 
     setAdminError('');
     setLoading(true);
     try {
       const res = await api.teacherLogin({
         department: teacherLoginDept,
-        teacherId: selectedTeacherId,
-        password: teacherLoginPassword
+        teacherId: selectedTeacherId
       });
 
       if (res.success && res.teacher) {
@@ -506,7 +501,7 @@ export function Login({ onLoginSuccess }) {
         onLoginSuccess('teacher', res.teacher);
       }
     } catch (err) {
-      setAdminError(err.message || 'Faculty Login Failed. Incorrect password or not registered.');
+      setAdminError(err.message || 'Faculty Launch Failed.');
     } finally {
       setLoading(false);
     }
@@ -517,8 +512,6 @@ export function Login({ onLoginSuccess }) {
     if (!teacherRegName.trim()) return setAdminError('Please enter your Faculty Full Name');
     if (!teacherRegSubject.trim()) return setAdminError('Please enter the Subject Name you teach');
     if (teacherRegDivisions.length === 0) return setAdminError('Please select at least one Division (SY-A, SY-B, or SY-C)');
-    if (!teacherRegPassword || teacherRegPassword.length < 4) return setAdminError('Please create a personal password with at least 4 characters');
-    if (teacherRegPassword !== teacherRegConfirmPassword) return setAdminError('Passwords do not match');
 
     setAdminError('');
     setLoading(true);
@@ -529,8 +522,7 @@ export function Login({ onLoginSuccess }) {
         subjectName: teacherRegSubject.trim(),
         divisions: teacherRegDivisions,
         division: teacherRegDivisions.join(', '),
-        batch: teacherRegBatch,
-        password: teacherRegPassword
+        batch: teacherRegBatch
       });
 
       if (res.success && res.teacher) {
@@ -1402,26 +1394,12 @@ export function Login({ onLoginSuccess }) {
                               );
                             })()}
 
-                            <div>
-                              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                                Personal Password
-                              </label>
-                              <input
-                                type="password"
-                                value={teacherLoginPassword}
-                                onChange={(e) => setTeacherLoginPassword(e.target.value)}
-                                placeholder="Enter your personal faculty password"
-                                className="w-full bg-white border border-slate-300 px-3.5 py-2.5 text-sm font-bold text-slate-900 focus:border-slate-800 outline-none"
-                                required
-                              />
-                            </div>
-
                             <button
                               type="submit"
                               disabled={loading}
                               className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs uppercase tracking-wide transition cursor-pointer"
                             >
-                              {loading ? 'Authenticating...' : '🚀 Launch Attendance Portal'}
+                              {loading ? 'Launching...' : '🚀 Launch Attendance Portal'}
                             </button>
                           </>
                         ) : (
@@ -1509,39 +1487,10 @@ export function Login({ onLoginSuccess }) {
                           </div>
                         </div>
 
-                        <div className="grid grid-cols-2 gap-2">
-                          <div>
-                            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                              Set Password
-                            </label>
-                            <input
-                              type="password"
-                              value={teacherRegPassword}
-                              onChange={(e) => setTeacherRegPassword(e.target.value)}
-                              placeholder="Min 4 chars"
-                              className="w-full bg-white border border-slate-300 px-3 py-2 text-xs font-bold text-slate-900 focus:border-slate-800 outline-none"
-                              required
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                              Confirm Password
-                            </label>
-                            <input
-                              type="password"
-                              value={teacherRegConfirmPassword}
-                              onChange={(e) => setTeacherRegConfirmPassword(e.target.value)}
-                              placeholder="Re-type"
-                              className="w-full bg-white border border-slate-300 px-3 py-2 text-xs font-bold text-slate-900 focus:border-slate-800 outline-none"
-                              required
-                            />
-                          </div>
-                        </div>
-
                         <button
                           type="submit"
                           disabled={loading}
-                          className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs uppercase tracking-wide transition cursor-pointer"
+                          className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs uppercase tracking-wide transition cursor-pointer mt-2"
                         >
                           {loading ? 'Registering Faculty...' : '✨ Register & Launch Attendance'}
                         </button>

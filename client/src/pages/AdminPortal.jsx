@@ -767,16 +767,10 @@ export function AdminPortal({ hodProfile, onLaunchLectureAsHod }) {
                     </div>
 
                     <div className="pt-2 border-t border-slate-200 flex items-center justify-between gap-1">
-                      <button
-                        onClick={() => handleResetTeacherPassword(t.id, t.name)}
-                        className="text-xs font-semibold px-2 py-1 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 transition touch-target"
-                        title="Reset Password"
-                      >
-                        Reset Pass
-                      </button>
+                      <span className="text-xs font-bold text-emerald-700">● Active Faculty</span>
                       <button
                         onClick={() => handleDeleteTeacher(t.id, t.name)}
-                        className="text-xs font-semibold px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition touch-target flex items-center space-x-1"
+                        className="text-xs font-semibold px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition touch-target flex items-center space-x-1"
                         title="Remove Faculty Member"
                       >
                         <Trash2 className="w-3 h-3" />
