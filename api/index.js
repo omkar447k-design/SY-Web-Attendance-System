@@ -311,7 +311,7 @@ app.get('/api/admin/stats', (req, res) => {
   }
 });
 
-// 11. STUDENT: REGISTRATION & LOGIN
+// 11. STUDENT: REGISTRATION & LOGIN (1-Phone Hardware Binding & Single-Session Lock)
 app.post('/api/student/login', (req, res) => {
   try {
     const { rollNo, prn, name, idCardPhoto, department = 'entc', division = 'SY-A', deviceId } = req.body || {};
@@ -322,12 +322,28 @@ app.post('/api/student/login', (req, res) => {
 
     let student = db.students.find(s => s.rollNo === numericRoll && s.division === division && (s.department === department || !s.department));
 
+    // STEP 2: Server-side Hardware Device Lock Enforcement
+    if (student && student.boundDeviceId && deviceId) {
+      if (student.boundDeviceId !== deviceId) {
+        return res.status(403).json({
+          success: false,
+          error: `🛑 Hardware Lock Violation: Account (Roll No. ${numericRoll}) is already locked to another Android phone. Please ask your HOD or Faculty to reset your device lock.`
+        });
+      }
+    }
+
+    const sessionToken = `tok_${department}_${division}_${numericRoll}_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+
     if (student) {
       student.name = cleanName;
       student.prn = cleanPrn || student.prn;
       student.idCardPhoto = idCardPhoto || student.idCardPhoto;
-      student.boundDeviceId = deviceId || student.boundDeviceId || `DEV_${Date.now()}`;
-      student.boundAt = student.boundAt || new Date().toISOString();
+      if (!student.boundDeviceId && deviceId) {
+        student.boundDeviceId = deviceId;
+        student.boundAt = new Date().toISOString();
+      }
+      student.activeSessionToken = sessionToken;
+      student.lastLoginAt = new Date().toISOString();
     } else {
       student = {
         id: `S_${department}_${division}_${numericRoll}`,
@@ -340,8 +356,10 @@ app.post('/api/student/login', (req, res) => {
         batch: numericRoll <= 20 ? 'B1' : numericRoll <= 40 ? 'B2' : 'B3',
         attendancePercentage: 100.0,
         isDefaulter: false,
-        boundDeviceId: deviceId || `DEV_${Date.now()}`,
-        boundAt: new Date().toISOString()
+        boundDeviceId: deviceId || `AND_DEV_${Date.now()}`,
+        boundAt: new Date().toISOString(),
+        activeSessionToken: sessionToken,
+        lastLoginAt: new Date().toISOString()
       };
       db.students.push(student);
     }
@@ -371,22 +389,10 @@ app.post('/api/student/login', (req, res) => {
     return res.json({
       success: true,
       student,
-      token: `std_tok_${student.id}_${Date.now()}`
+      token: sessionToken
     });
   } catch (err) {
-    const student = {
-      id: `S_${req.body?.department || 'entc'}_${req.body?.division || 'SY-A'}_${req.body?.rollNo || 22}`,
-      rollNo: Number(req.body?.rollNo || 22),
-      name: req.body?.name || 'Student',
-      prn: req.body?.prn || '12251ET049',
-      department: req.body?.department || 'entc',
-      division: req.body?.division || 'SY-A',
-      batch: 'B2',
-      idCardPhoto: req.body?.idCardPhoto,
-      boundDeviceId: req.body?.deviceId || `DEV_${Date.now()}`
-    };
-    db.students.push(student);
-    return res.json({ success: true, student, token: `std_tok_${Date.now()}` });
+    return res.status(500).json({ success: false, error: err.message || 'Login error' });
   }
 });
 

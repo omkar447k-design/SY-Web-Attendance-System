@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { GraduationCap, Users, Shield, ArrowRight, Smartphone, Lock, X, Building2, Camera, CheckCircle2, Sparkles, User, BookOpen, CheckSquare, Square, KeyRound, AlertTriangle, ShieldCheck, Hash, Key } from 'lucide-react';
 import { createWorker } from 'tesseract.js';
 import { api } from '../services/api';
-import { getDeviceIdentity } from '../services/fingerprint';
+import { getDeviceIdentity, checkBiometricsAvailable, promptAndroidBiometricFingerprint } from '../services/fingerprint';
 
 // 6 Engineering Departments with exact PRN 2-Letter Branch Code Mapping
 const DEPARTMENTS = [
@@ -215,6 +215,25 @@ export function Login({ onLoginSuccess }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [adminError, setAdminError] = useState('');
+
+  const [hasBiometrics, setHasBiometrics] = useState(false);
+  const [biometricVerified, setBiometricVerified] = useState(false);
+
+  useEffect(() => {
+    checkBiometricsAvailable().then(avail => setHasBiometrics(avail));
+  }, []);
+
+  const handleScanBiometrics = async () => {
+    try {
+      setError('');
+      const res = await promptAndroidBiometricFingerprint(name || 'Student');
+      if (res && res.success) {
+        setBiometricVerified(true);
+      }
+    } catch (err) {
+      setError(err.message || 'Fingerprint scan was cancelled.');
+    }
+  };
 
   useEffect(() => {
     if (window.location.hash === '#admin' || window.location.pathname === '/admin') {
@@ -760,6 +779,34 @@ export function Login({ onLoginSuccess }) {
               />
             </div>
 
+            {/* 7. OPTIONAL ANDROID BIOMETRIC FINGERPRINT SENSOR */}
+            {hasBiometrics && (
+              <div className="p-3 bg-slate-50 border border-slate-200 flex items-center justify-between">
+                <div className="flex items-center space-x-2.5 min-w-0">
+                  <div className="w-7 h-7 bg-sky-50 border border-sky-200 flex items-center justify-center flex-shrink-0">
+                    <Smartphone className="w-4 h-4 text-sky-600" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-xs font-bold text-slate-900 truncate">Android Fingerprint Sensor</div>
+                    <div className="text-[10px] text-slate-500 font-medium truncate">
+                      {biometricVerified ? '✅ Phone Biometrics Verified' : 'Optional thumbprint scan'}
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleScanBiometrics}
+                  className={`px-3 py-1.5 text-xs font-bold border transition flex-shrink-0 ml-2 ${
+                    biometricVerified
+                      ? 'bg-emerald-50 border-emerald-300 text-emerald-700'
+                      : 'bg-white border-slate-300 hover:border-slate-800 text-slate-800 active:scale-95'
+                  }`}
+                >
+                  {biometricVerified ? '✓ Verified' : 'Scan Fingerprint'}
+                </button>
+              </div>
+            )}
+
             <div className="pt-2">
               <button
                 type="submit"
@@ -774,7 +821,7 @@ export function Login({ onLoginSuccess }) {
 
             <div className="text-center pt-0.5">
               <p className="text-[11px] text-slate-500 font-medium">
-                🔒 1-Device Binding: Hardware lock is permanent upon physical ID verification.
+                🔒 1-Device Binding: Hardware fingerprint lock is permanent on this Android phone.
               </p>
             </div>
           </form>

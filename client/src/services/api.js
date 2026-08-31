@@ -317,8 +317,24 @@ export const api = {
   manualMarkAttendance: (sessionId, rollNo) => request('/api/teacher/session/manual-mark', { method: 'POST', body: JSON.stringify({ sessionId, rollNo }) }),
   getSessionExcelUrl: (sessionId) => `${API_BASE}/api/teacher/session/${sessionId}/export`,
 
-  // Student (Real-time Cross-Device Synchronization)
+  // Student (1-Phone Hardware Binding & Single-Session Lock)
   studentLogin: async (data) => {
+    // 1. Verify against existing cloud roster for hardware lock
+    const existingStudents = await CloudSync.getStudents(data.department, data.division);
+    const existing = existingStudents.find(s =>
+      s.rollNo === Number(data.rollNo) &&
+      s.division === data.division &&
+      s.department === data.department
+    );
+
+    if (existing && existing.boundDeviceId && data.deviceId) {
+      if (existing.boundDeviceId !== data.deviceId) {
+        throw new Error(`🛑 Hardware Lock Violation: Account (Roll No. ${data.rollNo}) is already bound to another Android phone. Please ask your HOD or Faculty to reset your device lock.`);
+      }
+    }
+
+    const sessionToken = `tok_${data.department || 'entc'}_${data.division || 'SY-A'}_${data.rollNo}_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+
     const studentData = {
       id: `S_${data.department || 'entc'}_${data.division || 'SY-A'}_${data.rollNo}`,
       rollNo: Number(data.rollNo),
@@ -328,15 +344,17 @@ export const api = {
       division: data.division || 'SY-A',
       batch: Number(data.rollNo) <= 20 ? 'B1' : Number(data.rollNo) <= 40 ? 'B2' : 'B3',
       idCardPhoto: data.idCardPhoto,
-      boundDeviceId: data.deviceId || `DEV_${Date.now()}`,
+      boundDeviceId: existing?.boundDeviceId || data.deviceId || `AND_DEV_${Date.now()}`,
+      activeSessionToken: sessionToken,
+      lastLoginAt: new Date().toISOString(),
       attendancePercentage: 100.0,
       isDefaulter: false,
-      boundAt: new Date().toISOString()
+      boundAt: existing?.boundAt || new Date().toISOString()
     };
 
     await CloudSync.saveStudent(studentData);
     await CloudSync.saveLog({
-      type: 'NEW_STUDENT_REGISTRATION',
+      type: 'STUDENT_LOGIN_DEVICE_LOCKED',
       studentId: studentData.id,
       studentName: studentData.name,
       rollNo: studentData.rollNo,
@@ -355,7 +373,7 @@ export const api = {
     return {
       success: true,
       student: studentData,
-      token: `std_tok_${studentData.id}_${Date.now()}`
+      token: sessionToken
     };
   },
 
