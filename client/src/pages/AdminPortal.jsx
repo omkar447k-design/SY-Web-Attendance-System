@@ -96,10 +96,24 @@ export function AdminPortal({ hodProfile, onLaunchLectureAsHod }) {
       if (res.success) {
         setStudents(prev => prev.filter(s => s.id !== studentId && s.rollNo !== Number(rollNo)));
         setLoginLogs(prev => prev.filter(l => l.studentId !== studentId && l.rollNo !== Number(rollNo)));
-        loadData();
+        await loadData();
       }
     } catch (err) {
       alert(err.message || 'Failed to delete student');
+    }
+  };
+
+  const handleClearDivisionStudents = async () => {
+    if (!window.confirm(`⚠️ PERMANENT WIPE: Are you sure you want to delete ALL students in ${divisionFilter} (${currentDeptObj?.name})? This completely wipes all student records from the database.`)) return;
+    try {
+      setLoading(true);
+      await api.clearDepartmentStudents(currentDept, divisionFilter);
+      await loadData();
+      alert(`✅ All student records for ${divisionFilter} have been completely wiped from the database.`);
+    } catch (err) {
+      alert(err.message || 'Failed to clear students');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -529,13 +543,24 @@ export function AdminPortal({ hodProfile, onLaunchLectureAsHod }) {
               </div>
             </div>
 
-            <button
-              onClick={() => setShowAddModal(true)}
-              className="flex items-center justify-center space-x-1.5 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold uppercase tracking-wider transition touch-target"
-            >
-              <UserPlus className="w-3.5 h-3.5" />
-              <span>Add Student</span>
-            </button>
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={handleClearDivisionStudents}
+                className="flex items-center justify-center space-x-1 px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold uppercase tracking-wider transition touch-target"
+                title="Wipe all student records in this division"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Wipe {divisionFilter}</span>
+              </button>
+
+              <button
+                onClick={() => setShowAddModal(true)}
+                className="flex items-center justify-center space-x-1.5 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold uppercase tracking-wider transition touch-target"
+              >
+                <UserPlus className="w-3.5 h-3.5" />
+                <span>Add Student</span>
+              </button>
+            </div>
           </div>
 
           <div className="overflow-x-auto -mx-5 px-5 sm:mx-0 sm:px-0 max-h-[520px] overflow-y-auto">

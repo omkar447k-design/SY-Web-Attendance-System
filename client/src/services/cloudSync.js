@@ -319,11 +319,61 @@ export const CloudSync = {
 
   deleteStudent: async (studentId) => {
     deletedStudentIds.add(studentId);
-    persistDeletionTombstones();
 
     const state = getInitialCache();
-    state.students = (state.students || []).filter(s => s.id !== studentId);
-    state.logs = (state.logs || []).filter(l => l.studentId !== studentId);
+    const targetStudent = (state.students || []).find(s => s.id === studentId);
+    if (targetStudent) {
+      const canonicalKey = `S_${String(targetStudent.department || '').toLowerCase()}_${String(targetStudent.division || 'SY-A').toUpperCase()}_${targetStudent.rollNo}`;
+      deletedStudentIds.add(canonicalKey);
+    }
+    persistDeletionTombstones();
+
+    state.students = (state.students || []).filter(s => s.id !== studentId && (!targetStudent || s.id !== targetStudent.id));
+    state.logs = (state.logs || []).filter(l => l.studentId !== studentId && (!targetStudent || (Number(l.rollNo) !== Number(targetStudent.rollNo) || String(l.division).toUpperCase() !== String(targetStudent.division).toUpperCase())));
+    
+    // Also purge from all session attendees
+    state.sessions = (state.sessions || []).map(sess => {
+      const remainingAttendees = (sess.attendees || []).filter(a => a.studentId !== studentId && (!targetStudent || Number(a.rollNo) !== Number(targetStudent.rollNo)));
+      return {
+        ...sess,
+        totalPresent: remainingAttendees.length,
+        attendees: remainingAttendees
+      };
+    });
+
+    persistLocalState(state);
+    broadcastToCloudAsync(state);
+  },
+
+  clearDepartmentStudents: async (department, division = null) => {
+    const state = getInitialCache();
+    const cleanDept = String(department).toLowerCase();
+    
+    (state.students || []).forEach(s => {
+      if (String(s.department || '').toLowerCase() === cleanDept) {
+        if (!division || String(s.division || '').toUpperCase() === String(division).toUpperCase()) {
+          deletedStudentIds.add(s.id);
+          const canonicalKey = `S_${cleanDept}_${String(s.division || 'SY-A').toUpperCase()}_${s.rollNo}`;
+          deletedStudentIds.add(canonicalKey);
+        }
+      }
+    });
+    persistDeletionTombstones();
+
+    state.students = (state.students || []).filter(s => {
+      const matchDept = String(s.department || '').toLowerCase() === cleanDept;
+      if (!matchDept) return true;
+      if (division) return String(s.division || '').toUpperCase() !== String(division).toUpperCase();
+      return false;
+    });
+
+    state.logs = (state.logs || []).filter(l => {
+      const matchDept = String(l.department || '').toLowerCase() === cleanDept;
+      if (!matchDept) return true;
+      if (division) return String(l.division || '').toUpperCase() !== String(division).toUpperCase();
+      return false;
+    });
+
     persistLocalState(state);
     broadcastToCloudAsync(state);
   },

@@ -174,6 +174,11 @@ export const api = {
     return { success: true, message: 'Student removed permanently from roster.' };
   },
 
+  clearDepartmentStudents: async (department, division = null) => {
+    await CloudSync.clearDepartmentStudents(department, division);
+    return { success: true, message: `All student records in ${division || department} have been completely wiped.` };
+  },
+
   resetStudentDevice: async (studentId) => {
     await CloudSync.resetDevice(studentId);
     return { success: true, message: 'Student phone hardware binding reset' };
