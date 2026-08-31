@@ -1,7 +1,7 @@
 // ULTRA-HIGH PERFORMANCE REAL-TIME CLOUD ENGINE (NON-BLOCKING + ZERO LATENCY)
 // Optimistic UI updates (0ms) + Asynchronous Non-Blocking Cloud Broker Sync
 
-const SYNC_TOPIC = 'sy_attendance_prod_sync_v2026';
+const SYNC_TOPIC = 'sy_attendance_prod_sync_v2026_clean';
 const SYNC_URL = `https://ntfy.sh/${SYNC_TOPIC}`;
 
 let memoryCache = null;
@@ -12,32 +12,32 @@ let deletedStudentIds = new Set();
 let deletedSessionIds = new Set();
 let deletedTeacherIds = new Set();
 
-// Restore persisted deletion tombstones (v3)
+// Restore persisted deletion tombstones (v4)
 try {
-  const ds = localStorage.getItem('sy_deleted_students_v3');
+  const ds = localStorage.getItem('sy_deleted_students_v4');
   if (ds) deletedStudentIds = new Set(JSON.parse(ds));
 } catch (e) {}
 try {
-  const dl = localStorage.getItem('sy_deleted_sessions_v3');
+  const dl = localStorage.getItem('sy_deleted_sessions_v4');
   if (dl) deletedSessionIds = new Set(JSON.parse(dl));
 } catch (e) {}
 try {
-  const dt = localStorage.getItem('sy_deleted_teachers_v3');
+  const dt = localStorage.getItem('sy_deleted_teachers_v4');
   if (dt) deletedTeacherIds = new Set(JSON.parse(dt));
 } catch (e) {}
 
 function persistDeletionTombstones() {
   try {
-    localStorage.setItem('sy_deleted_students_v3', JSON.stringify([...deletedStudentIds]));
-    localStorage.setItem('sy_deleted_sessions_v3', JSON.stringify([...deletedSessionIds]));
-    localStorage.setItem('sy_deleted_teachers_v3', JSON.stringify([...deletedTeacherIds]));
+    localStorage.setItem('sy_deleted_students_v4', JSON.stringify([...deletedStudentIds]));
+    localStorage.setItem('sy_deleted_sessions_v4', JSON.stringify([...deletedSessionIds]));
+    localStorage.setItem('sy_deleted_teachers_v4', JSON.stringify([...deletedTeacherIds]));
   } catch (e) {}
 }
 
 // 1. Live State Loader — always reads from localStorage for cross-tab freshness
 function getInitialCache() {
   try {
-    const local = localStorage.getItem('sy_cloud_cache_v6');
+    const local = localStorage.getItem('sy_cloud_cache_v7');
     if (local) {
       memoryCache = JSON.parse(local);
       return memoryCache;
@@ -59,7 +59,7 @@ function getInitialCache() {
 function persistLocalState(state) {
   memoryCache = state;
   try {
-    localStorage.setItem('sy_cloud_cache_v6', JSON.stringify(state));
+    localStorage.setItem('sy_cloud_cache_v7', JSON.stringify(state));
   } catch (e) {}
 }
 
