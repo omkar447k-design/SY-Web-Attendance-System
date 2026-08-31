@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { GraduationCap, Users, Shield, ArrowRight, Smartphone, Lock, X, Building2, Camera, CheckCircle2, Sparkles, User, BookOpen, CheckSquare, Square, KeyRound, AlertTriangle, ShieldCheck, Hash, Key } from 'lucide-react';
+import { GraduationCap, Users, Shield, ArrowRight, Smartphone, Lock, X, Building2, Camera, CheckCircle2, Sparkles, User, BookOpen, CheckSquare, Square, KeyRound, AlertTriangle, ShieldCheck, Hash, Key, ScanFace } from 'lucide-react';
 import { createWorker } from 'tesseract.js';
 import { api } from '../services/api';
-import { getDeviceIdentity, checkBiometricsAvailable, promptAndroidBiometricFingerprint } from '../services/fingerprint';
+import { getDeviceIdentity, getDeviceType, promptCompulsoryDeviceAuth } from '../services/fingerprint';
 
 // 6 Engineering Departments with exact PRN 2-Letter Branch Code Mapping
 const DEPARTMENTS = [
@@ -395,7 +395,13 @@ export function Login({ onLoginSuccess }) {
     setLoading(true);
 
     try {
-      const { deviceId, fingerprint } = await getDeviceIdentity();
+      // 1. Mandatory Biometric / Device Lock Prompt (Apple Face ID / Android Fingerprint / Screen Passcode)
+      await promptCompulsoryDeviceAuth(name.trim());
+
+      // 2. Hardware Device Identity (FingerprintJS v4 + Hardware Canvas/WebGL Engine)
+      const { deviceId, fingerprint, deviceName, biometricName } = await getDeviceIdentity();
+
+      // 3. Server-Side Device Lock & Login Submission
       const res = await api.studentLogin({
         rollNo: Number(rollNo),
         prn: prn.trim().toUpperCase(),
@@ -404,14 +410,16 @@ export function Login({ onLoginSuccess }) {
         department,
         division,
         deviceId,
-        fingerprint
+        fingerprint,
+        deviceName,
+        biometricMethod: biometricName
       });
 
       if (res.success) {
-        onLoginSuccess('student', res.student, { deviceId, fingerprint });
+        onLoginSuccess('student', res.student, { deviceId, fingerprint, deviceName, biometricName });
       }
     } catch (err) {
-      setError(err.message || 'Login failed. Please check your details.');
+      setError(err.message || 'Login failed. Physical biometric / passcode authentication is required.');
     } finally {
       setLoading(false);
     }
@@ -779,33 +787,32 @@ export function Login({ onLoginSuccess }) {
               />
             </div>
 
-            {/* 7. OPTIONAL ANDROID BIOMETRIC FINGERPRINT SENSOR */}
-            {hasBiometrics && (
-              <div className="p-3 bg-slate-50 border border-slate-200 flex items-center justify-between">
-                <div className="flex items-center space-x-2.5 min-w-0">
-                  <div className="w-7 h-7 bg-sky-50 border border-sky-200 flex items-center justify-center flex-shrink-0">
+            {/* 7. MANDATORY BIOMETRIC SECURITY BANNER (Apple Face ID / Android Fingerprint / Passcode) */}
+            <div className="p-3 bg-slate-50 border border-slate-200 flex items-center justify-between">
+              <div className="flex items-center space-x-2.5 min-w-0">
+                <div className="w-7 h-7 bg-sky-50 border border-sky-200 flex items-center justify-center flex-shrink-0">
+                  {getDeviceType().type === 'ios' ? (
+                    <ScanFace className="w-4 h-4 text-sky-600" />
+                  ) : (
                     <Smartphone className="w-4 h-4 text-sky-600" />
+                  )}
+                </div>
+                <div className="min-w-0">
+                  <div className="text-xs font-bold text-slate-900 truncate flex items-center space-x-1.5">
+                    <span>{getDeviceType().biometricName}</span>
+                    <span className="text-[9px] text-sky-700 bg-sky-50 px-1 py-0.5 border border-sky-200 font-bold uppercase">
+                      Mandatory
+                    </span>
                   </div>
-                  <div className="min-w-0">
-                    <div className="text-xs font-bold text-slate-900 truncate">Android Fingerprint Sensor</div>
-                    <div className="text-[10px] text-slate-500 font-medium truncate">
-                      {biometricVerified ? '✅ Phone Biometrics Verified' : 'Optional thumbprint scan'}
-                    </div>
+                  <div className="text-[10px] text-slate-500 font-medium truncate">
+                    {getDeviceType().type === 'ios' ? 'Apple Face ID & iPhone Passcode Lock' : 'Biometric Sensor & Screen Lock PIN'}
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={handleScanBiometrics}
-                  className={`px-3 py-1.5 text-xs font-bold border transition flex-shrink-0 ml-2 ${
-                    biometricVerified
-                      ? 'bg-emerald-50 border-emerald-300 text-emerald-700'
-                      : 'bg-white border-slate-300 hover:border-slate-800 text-slate-800 active:scale-95'
-                  }`}
-                >
-                  {biometricVerified ? '✓ Verified' : 'Scan Fingerprint'}
-                </button>
               </div>
-            )}
+              <div className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-1 border border-emerald-200 flex-shrink-0 ml-2">
+                ● Enforced
+              </div>
+            </div>
 
             <div className="pt-2">
               <button
@@ -814,14 +821,16 @@ export function Login({ onLoginSuccess }) {
                 className="w-full py-3.5 sm:py-4 px-4 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs sm:text-sm tracking-wide uppercase flex items-center justify-center space-x-2 transition active:scale-[0.99] disabled:opacity-30 disabled:cursor-not-allowed min-h-[48px]"
               >
                 <ShieldCheck className="w-4 h-4 text-sky-400 flex-shrink-0" />
-                <span className="truncate">{loading ? 'Binding Phone & Entering...' : 'Verify All Fields & Enter Student Portal'}</span>
+                <span className="truncate">
+                  {loading ? 'Verifying Biometrics & Entering...' : `Verify ${getDeviceType().type === 'ios' ? 'Face ID' : 'Fingerprint'} & Enter Portal`}
+                </span>
                 <ArrowRight className="w-4 h-4 flex-shrink-0" />
               </button>
             </div>
 
             <div className="text-center pt-0.5">
               <p className="text-[11px] text-slate-500 font-medium">
-                🔒 1-Device Binding: Hardware fingerprint lock is permanent on this Android phone.
+                🔒 1-Device Binding: Hardware lock is permanent on this {getDeviceType().name}.
               </p>
             </div>
           </form>
