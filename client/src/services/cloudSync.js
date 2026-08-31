@@ -179,7 +179,9 @@ export const CloudSync = {
 
     const idx = state.students.findIndex(s =>
       s.id === cleanStudent.id ||
-      (s.rollNo === Number(cleanStudent.rollNo) && s.department === cleanStudent.department && s.division === cleanStudent.division)
+      (Number(s.rollNo) === Number(cleanStudent.rollNo) &&
+       String(s.department || '').toLowerCase() === String(cleanStudent.department || '').toLowerCase() &&
+       String(s.division || '').toUpperCase() === String(cleanStudent.division || '').toUpperCase())
     );
 
     if (idx >= 0) {
@@ -194,16 +196,16 @@ export const CloudSync = {
 
   deleteStudent: async (studentId) => {
     const state = await fetchCloudState();
-    state.students = (state.students || []).filter(s => s.id !== studentId && s.rollNo !== Number(studentId));
-    state.logs = (state.logs || []).filter(l => l.studentId !== studentId && l.rollNo !== Number(studentId));
+    state.students = (state.students || []).filter(s => s.id !== studentId);
+    state.logs = (state.logs || []).filter(l => l.studentId !== studentId);
     await broadcastCloudState(state);
   },
 
   resetDevice: async (studentId) => {
     const state = await fetchCloudState();
     state.students = (state.students || []).map(s => {
-      if (s.id === studentId || s.rollNo === Number(studentId)) {
-        return { ...s, boundDeviceId: null, boundAt: null };
+      if (s.id === studentId) {
+        return { ...s, boundDeviceId: null, boundAt: null, activeSessionToken: null };
       }
       return s;
     });

@@ -244,8 +244,8 @@ app.post('/api/admin/students', (req, res) => {
 app.post('/api/admin/students/:studentId/delete', (req, res) => {
   try {
     const { studentId } = req.params;
-    db.students = db.students.filter(s => s.id !== studentId && s.rollNo !== Number(studentId));
-    db.loginLogs = db.loginLogs.filter(l => l.studentId !== studentId && l.rollNo !== Number(studentId));
+    db.students = db.students.filter(s => s.id !== studentId);
+    db.loginLogs = db.loginLogs.filter(l => l.studentId !== studentId);
     res.json({ success: true, message: 'Student removed from database' });
   } catch (err) {
     res.json({ success: true, message: 'Student removed' });
@@ -256,10 +256,11 @@ app.post('/api/admin/students/:studentId/delete', (req, res) => {
 app.post('/api/admin/students/:studentId/reset-device', (req, res) => {
   try {
     const { studentId } = req.params;
-    const student = db.students.find(s => s.id === studentId || s.rollNo === Number(studentId));
+    const student = db.students.find(s => s.id === studentId);
     if (student) {
       student.boundDeviceId = null;
       student.boundAt = null;
+      student.activeSessionToken = null;
     }
     res.json({ success: true, message: 'Device reset successfully' });
   } catch (err) {
@@ -319,8 +320,15 @@ app.post('/api/student/login', (req, res) => {
     const numericRoll = Number(rollNo) || 1;
     const cleanPrn = String(prn || '').trim().toUpperCase();
     const cleanName = (name || 'Student').trim();
+    const cleanDept = String(department || 'entc').trim().toLowerCase();
+    const cleanDiv = String(division || 'SY-A').trim().toUpperCase();
 
-    let student = db.students.find(s => s.rollNo === numericRoll && s.division === division && (s.department === department || !s.department));
+    // STRICT 3-CONDITION COMPOUND LOOKUP: Department + Division + Roll No
+    let student = db.students.find(s =>
+      Number(s.rollNo) === numericRoll &&
+      String(s.division || '').trim().toUpperCase() === cleanDiv &&
+      String(s.department || '').trim().toLowerCase() === cleanDept
+    );
 
     // STEP 2: Strict Existence & Device/Identity Verification (Roll No + Dept + Division)
     if (student) {
