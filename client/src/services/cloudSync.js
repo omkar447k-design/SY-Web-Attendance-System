@@ -1,4 +1,4 @@
-const SYNC_TOPIC = 'sy_attendance_prod_sync_v2026_clean';
+const SYNC_TOPIC = 'sy_attendance_prod_sync_v2026_fresh_v9';
 const SYNC_URL = `https://ntfy.sh/${SYNC_TOPIC}`;
 
 let memoryCache = null;
@@ -9,48 +9,57 @@ let deletedStudentIds = new Set();
 let deletedSessionIds = new Set();
 let deletedTeacherIds = new Set();
 
-// Restore persisted deletion tombstones (v5)
+// Restore persisted deletion tombstones (v6)
 try {
-  const ds = localStorage.getItem('sy_deleted_students_v5');
+  const ds = localStorage.getItem('sy_deleted_students_v6');
   if (ds) deletedStudentIds = new Set(JSON.parse(ds));
 } catch (e) {}
 try {
-  const dl = localStorage.getItem('sy_deleted_sessions_v5');
+  const dl = localStorage.getItem('sy_deleted_sessions_v6');
   if (dl) deletedSessionIds = new Set(JSON.parse(dl));
 } catch (e) {}
 try {
-  const dt = localStorage.getItem('sy_deleted_teachers_v5');
+  const dt = localStorage.getItem('sy_deleted_teachers_v6');
   if (dt) deletedTeacherIds = new Set(JSON.parse(dt));
 } catch (e) {}
 
 function persistDeletionTombstones() {
   try {
-    localStorage.setItem('sy_deleted_students_v5', JSON.stringify([...deletedStudentIds]));
-    localStorage.setItem('sy_deleted_sessions_v5', JSON.stringify([...deletedSessionIds]));
-    localStorage.setItem('sy_deleted_teachers_v5', JSON.stringify([...deletedTeacherIds]));
+    localStorage.setItem('sy_deleted_students_v6', JSON.stringify([...deletedStudentIds]));
+    localStorage.setItem('sy_deleted_sessions_v6', JSON.stringify([...deletedSessionIds]));
+    localStorage.setItem('sy_deleted_teachers_v6', JSON.stringify([...deletedTeacherIds]));
   } catch (e) {}
 }
 
-// 1. Live State Loader — resets previous student data while preserving teachers and HOD accounts
+// 1. Live State Loader — cleans previous student records while preserving teachers and HOD accounts
 function getInitialCache() {
   try {
-    const local = localStorage.getItem('sy_cloud_cache_v8');
+    const local = localStorage.getItem('sy_cloud_cache_v9');
     if (local) {
       memoryCache = JSON.parse(local);
       return memoryCache;
     }
 
-    // Preserve teachers and HOD accounts from previous versions
+    // Extract ONLY teachers and HOD accounts from any previous versions
     let preservedTeachers = [];
     let preservedHod = {};
-    try {
-      const prevCache = localStorage.getItem('sy_cloud_cache_v7') || localStorage.getItem('sy_cloud_cache_v6');
-      if (prevCache) {
-        const parsed = JSON.parse(prevCache);
-        preservedTeachers = parsed.teachers || [];
-        preservedHod = parsed.hodAccounts || {};
-      }
-    } catch (e) {}
+    const oldKeys = ['sy_cloud_cache_v8', 'sy_cloud_cache_v7', 'sy_cloud_cache_v6', 'sy_cloud_cache_v5'];
+    for (const k of oldKeys) {
+      try {
+        const val = localStorage.getItem(k);
+        if (val) {
+          const parsed = JSON.parse(val);
+          if (Array.isArray(parsed.teachers) && parsed.teachers.length > preservedTeachers.length) {
+            preservedTeachers = parsed.teachers;
+          }
+          if (parsed.hodAccounts && Object.keys(parsed.hodAccounts).length > Object.keys(preservedHod).length) {
+            preservedHod = { ...preservedHod, ...parsed.hodAccounts };
+          }
+          // Clean out old student-containing cache
+          localStorage.removeItem(k);
+        }
+      } catch (e) {}
+    }
 
     memoryCache = {
       students: [],
@@ -60,6 +69,7 @@ function getInitialCache() {
       teachers: preservedTeachers
     };
     persistLocalState(memoryCache);
+    broadcastToCloudAsync(memoryCache);
     return memoryCache;
   } catch (e) {}
 
@@ -78,7 +88,7 @@ function getInitialCache() {
 function persistLocalState(state) {
   memoryCache = state;
   try {
-    localStorage.setItem('sy_cloud_cache_v8', JSON.stringify(state));
+    localStorage.setItem('sy_cloud_cache_v9', JSON.stringify(state));
   } catch (e) {}
 }
 
