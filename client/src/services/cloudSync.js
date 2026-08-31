@@ -310,6 +310,12 @@ export const CloudSync = {
       rollNo: canonicalRoll
     };
 
+    // Remove from deletion tombstones if re-registering
+    deletedStudentIds.delete(canonicalId);
+    deletedStudentIds.delete(cleanStudent.id);
+    if (cleanStudent.prn) deletedStudentIds.delete(String(cleanStudent.prn).toUpperCase());
+    persistDeletionTombstones();
+
     const idx = state.students.findIndex(s =>
       s.id === canonicalId ||
       (Number(s.rollNo) === canonicalRoll &&

@@ -82,7 +82,7 @@ export function AdminPortal({ hodProfile, onLaunchLectureAsHod }) {
   useEffect(() => {
     setLoading(true);
     loadData();
-    const interval = setInterval(loadData, 8000);
+    const interval = setInterval(loadData, 3000);
     return () => clearInterval(interval);
   }, [divisionFilter, currentDept]);
 
