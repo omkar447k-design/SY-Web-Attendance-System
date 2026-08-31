@@ -216,25 +216,6 @@ export function Login({ onLoginSuccess }) {
   const [error, setError] = useState('');
   const [adminError, setAdminError] = useState('');
 
-  const [hasBiometrics, setHasBiometrics] = useState(false);
-  const [biometricVerified, setBiometricVerified] = useState(false);
-
-  useEffect(() => {
-    checkBiometricsAvailable().then(avail => setHasBiometrics(avail));
-  }, []);
-
-  const handleScanBiometrics = async () => {
-    try {
-      setError('');
-      const res = await promptAndroidBiometricFingerprint(name || 'Student');
-      if (res && res.success) {
-        setBiometricVerified(true);
-      }
-    } catch (err) {
-      setError(err.message || 'Fingerprint scan was cancelled.');
-    }
-  };
-
   useEffect(() => {
     if (window.location.hash === '#admin' || window.location.pathname === '/admin') {
       setShowAdminModal(true);
