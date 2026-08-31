@@ -13,18 +13,18 @@ let deletedSessionIds = new Set();
 
 // Restore persisted deletion tombstones
 try {
-  const ds = localStorage.getItem('sy_deleted_students_v1');
+  const ds = localStorage.getItem('sy_deleted_students_v2');
   if (ds) deletedStudentIds = new Set(JSON.parse(ds));
 } catch (e) {}
 try {
-  const dl = localStorage.getItem('sy_deleted_sessions_v1');
+  const dl = localStorage.getItem('sy_deleted_sessions_v2');
   if (dl) deletedSessionIds = new Set(JSON.parse(dl));
 } catch (e) {}
 
 function persistDeletionTombstones() {
   try {
-    localStorage.setItem('sy_deleted_students_v1', JSON.stringify([...deletedStudentIds]));
-    localStorage.setItem('sy_deleted_sessions_v1', JSON.stringify([...deletedSessionIds]));
+    localStorage.setItem('sy_deleted_students_v2', JSON.stringify([...deletedStudentIds]));
+    localStorage.setItem('sy_deleted_sessions_v2', JSON.stringify([...deletedSessionIds]));
   } catch (e) {}
 }
 
@@ -32,7 +32,7 @@ function persistDeletionTombstones() {
 function getInitialCache() {
   if (memoryCache) return memoryCache;
   try {
-    const local = localStorage.getItem('sy_cloud_cache_v4');
+    const local = localStorage.getItem('sy_cloud_cache_v5');
     if (local) {
       memoryCache = JSON.parse(local);
       return memoryCache;
@@ -52,7 +52,7 @@ function getInitialCache() {
 function persistLocalState(state) {
   memoryCache = state;
   try {
-    localStorage.setItem('sy_cloud_cache_v4', JSON.stringify(state));
+    localStorage.setItem('sy_cloud_cache_v5', JSON.stringify(state));
   } catch (e) {}
 }
 
