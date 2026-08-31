@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Play, Plus, Square, Download, Users, Clock, CheckCircle, RefreshCw, UserPlus, Building2, CheckSquare, Square as SquareIcon, CheckCircle2, FileSpreadsheet, X, ArrowLeft, BookOpen, ChevronDown, ChevronUp, Trash2 } from 'lucide-react';
-import { api, getSocket } from '../services/api';
+import { api, getSocket, getRotatingPinForSession } from '../services/api';
 import { TimerRing } from '../components/TimerRing';
 import { exportLectureExcelFile } from '../services/excelExport';
 
@@ -79,7 +79,7 @@ export function TeacherPortal({ teacher, onBack }) {
     loadConductedLectures();
   }, [teacher.id, department]);
 
-  // 1. High-Precision 1-Second Timer Engine
+  // 1. High-Precision 1-Second Timer Engine with dynamic PIN calculation
   useEffect(() => {
     if (!activeSession?.id || !activeSession?.endTime) return;
 
@@ -88,14 +88,13 @@ export function TeacherPortal({ teacher, onBack }) {
       const endTimeMs = new Date(activeSession.endTime).getTime();
       const remainingSec = Math.max(0, Math.ceil((endTimeMs - now) / 1000));
 
-      const msIntoSlot = now % 15000;
-      const secondsRemainingInSlot = Math.max(1, 15 - Math.floor(msIntoSlot / 1000));
-
       if (remainingSec <= 0) {
         setActiveSession(prev => prev ? { ...prev, remainingSessionSec: 0, status: 'closed' } : null);
         loadConductedLectures();
         return;
       }
+
+      const { pin, secondsRemaining } = getRotatingPinForSession(activeSession, now);
 
       setActiveSession(prev => {
         if (!prev) return null;
@@ -103,8 +102,8 @@ export function TeacherPortal({ teacher, onBack }) {
           ...prev,
           remainingSessionSec: remainingSec,
           pinInfo: {
-            ...(prev.pinInfo || {}),
-            secondsRemaining: secondsRemainingInSlot
+            pin,
+            secondsRemaining
           }
         };
       });
@@ -113,7 +112,7 @@ export function TeacherPortal({ teacher, onBack }) {
     return () => clearInterval(interval);
   }, [activeSession?.id, activeSession?.endTime]);
 
-  // 2. Fast Polling (Every 3s) for PIN rotation & attendee list updates
+  // 2. Fast Polling (Every 3s) for attendee list updates
   useEffect(() => {
     if (!activeSession?.id) return;
 
@@ -123,12 +122,13 @@ export function TeacherPortal({ teacher, onBack }) {
         if (sessRes.success && sessRes.active) {
           setActiveSession(prev => {
             if (!prev) return sessRes.session;
+            const { pin, secondsRemaining } = getRotatingPinForSession(sessRes.session, Date.now());
             return {
               ...prev,
               ...sessRes.session,
               pinInfo: {
-                ...sessRes.session.pinInfo,
-                secondsRemaining: prev.pinInfo?.secondsRemaining || sessRes.session.pinInfo.secondsRemaining
+                pin,
+                secondsRemaining: prev.pinInfo?.secondsRemaining || secondsRemaining
               },
               totalPresent: sessRes.session.totalPresent,
               totalStudents: sessRes.session.totalStudents,

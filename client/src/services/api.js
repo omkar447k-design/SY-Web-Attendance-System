@@ -53,6 +53,36 @@ const DEPARTMENTS_LIST = [
   { id: 'instru', name: '6. Instrumentation Engineering', code: 'INSTRU' }
 ];
 
+export function getRotatingPinForSession(session, now = Date.now()) {
+  const ROTATION_SECONDS = 15;
+  const timeSlot = Math.floor(now / (ROTATION_SECONDS * 1000));
+  const salt = session?.id || 'SY_PIN_SALT';
+  
+  function computePin(slot) {
+    const str = `${salt}_${slot}_SECURE`;
+    let h = 0x811c9dc5;
+    for (let i = 0; i < str.length; i++) {
+      h ^= str.charCodeAt(i);
+      h = Math.imul(h, 0x01000193);
+      h = (h << 13) | (h >>> 19);
+      h = Math.imul(h, 5) + 0xe6546b64;
+    }
+    h ^= h >>> 16;
+    h = Math.imul(h, 0x85ebca6b);
+    h ^= h >>> 13;
+    h = Math.imul(h, 0xc2b2ae35);
+    h ^= h >>> 16;
+    return String(Math.abs(h) % 9000 + 1000);
+  }
+
+  const currentPin = computePin(timeSlot);
+  const previousPin = computePin(timeSlot - 1);
+  const msIntoSlot = now % (ROTATION_SECONDS * 1000);
+  const secondsRemaining = Math.max(1, ROTATION_SECONDS - Math.floor(msIntoSlot / 1000));
+
+  return { pin: currentPin, previousPin, secondsRemaining };
+}
+
 export const api = {
   // Admin & 2-Tier HOD Security
   verifyGatekeeper: async (code) => {
@@ -293,11 +323,13 @@ export const api = {
     );
     if (active) {
       const remainingSec = Math.max(0, Math.ceil((new Date(active.endTime).getTime() - now) / 1000));
+      const { pin, secondsRemaining } = getRotatingPinForSession(active, now);
       return {
         success: true,
         active: true,
         session: {
           ...active,
+          pinInfo: { pin, secondsRemaining },
           remainingSessionSec: remainingSec
         }
       };
@@ -308,24 +340,6 @@ export const api = {
   startSession: async (data) => {
     const selectedDivs = data.divisions && data.divisions.length > 0 ? data.divisions : [data.division || 'SY-A'];
     
-    // High-entropy 15s PIN
-    const ROTATION_SECONDS = 15;
-    const timeSlot = Math.floor(Date.now() / (ROTATION_SECONDS * 1000));
-    let h = 0x811c9dc5;
-    const str = `SY_SALT_${Date.now()}_${timeSlot}_SECURE`;
-    for (let i = 0; i < str.length; i++) {
-      h ^= str.charCodeAt(i);
-      h = Math.imul(h, 0x01000193);
-      h = (h << 13) | (h >>> 19);
-      h = Math.imul(h, 5) + 0xe6546b64;
-    }
-    h ^= h >>> 16;
-    h = Math.imul(h, 0x85ebca6b);
-    h ^= h >>> 13;
-    h = Math.imul(h, 0xc2b2ae35);
-    h ^= h >>> 16;
-    const initialPin = String(Math.abs(h) % 9000 + 1000);
-
     const newSession = {
       id: `SESS_${Date.now()}`,
       subjectName: data.subjectName,
@@ -345,13 +359,14 @@ export const api = {
       attendees: []
     };
 
+    const { pin, secondsRemaining } = getRotatingPinForSession(newSession);
     await CloudSync.saveSession(newSession);
 
     return {
       success: true,
       session: {
         ...newSession,
-        pinInfo: { pin: initialPin, secondsRemaining: 15 },
+        pinInfo: { pin, secondsRemaining },
         remainingSessionSec: (Number(data.durationMinutes) || 3) * 60
       }
     };
@@ -598,6 +613,13 @@ export const api = {
 
     if (!isEligible) {
       throw new Error(`🛑 Division Restriction: This lecture is only for Division ${session.division}. You belong to ${cleanDiv}.`);
+    }
+
+    // Verify dynamic rotating PIN (matches active slot or previous grace slot)
+    const { pin: activePin, previousPin: gracePin } = getRotatingPinForSession(session);
+    const enteredPin = String(data.enteredPin || data.pin || '').trim();
+    if (enteredPin !== activePin && enteredPin !== gracePin) {
+      throw new Error('🛑 Invalid or Expired PIN. Please enter the fresh 4-digit PIN displayed on your professor\'s projector screen.');
     }
 
     session.attendees = session.attendees || [];
