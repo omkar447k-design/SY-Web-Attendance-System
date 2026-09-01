@@ -1,299 +1,190 @@
-const SYNC_TOPIC = 'sy_attendance_prod_sync_v2026_clean_v12';
-const SYNC_URL = `https://ntfy.sh/${SYNC_TOPIC}`;
+﻿import { db } from './firebase';
+import { 
+  collection, 
+  doc, 
+  setDoc, 
+  getDoc, 
+  getDocs, 
+  deleteDoc, 
+  onSnapshot, 
+  query, 
+  orderBy, 
+  limit 
+} from 'firebase/firestore';
 
-let memoryCache = null;
-let isSyncing = false;
+const LOCAL_STORAGE_KEY = 'sy_firestore_cache_v1';
+let memoryCache = {
+  students: [],
+  sessions: [],
+  logs: [],
+  hodAccounts: {},
+  teachers: []
+};
 
-// Track IDs that were explicitly deleted so cloud merge never resurrects them
-let deletedStudentIds = new Set();
-let deletedSessionIds = new Set();
-let deletedTeacherIds = new Set();
-
-// Restore persisted deletion tombstones (v9)
+// Initialize cache from localStorage
 try {
-  const ds = localStorage.getItem('sy_deleted_students_v9');
-  if (ds) deletedStudentIds = new Set(JSON.parse(ds));
+  const local = localStorage.getItem(LOCAL_STORAGE_KEY);
+  if (local) {
+    memoryCache = { ...memoryCache, ...JSON.parse(local) };
+  }
 } catch (e) {}
-try {
-  const dl = localStorage.getItem('sy_deleted_sessions_v9');
-  if (dl) deletedSessionIds = new Set(JSON.parse(dl));
-} catch (e) {}
-try {
-  const dt = localStorage.getItem('sy_deleted_teachers_v9');
-  if (dt) deletedTeacherIds = new Set(JSON.parse(dt));
-} catch (e) {}
-
-function persistDeletionTombstones() {
-  try {
-    localStorage.setItem('sy_deleted_students_v9', JSON.stringify([...deletedStudentIds]));
-    localStorage.setItem('sy_deleted_sessions_v9', JSON.stringify([...deletedSessionIds]));
-    localStorage.setItem('sy_deleted_teachers_v9', JSON.stringify([...deletedTeacherIds]));
-  } catch (e) {}
-}
-
-function isStudentDeleted(s) {
-  if (!s) return true;
-  if (s.id && deletedStudentIds.has(s.id)) return true;
-  const cleanDept = String(s.department || '').toLowerCase();
-  const cleanDiv = String(s.division || 'SY-A').toUpperCase();
-  const canonicalKey = `S_${cleanDept}_${cleanDiv}_${s.rollNo}`;
-  if (deletedStudentIds.has(canonicalKey)) return true;
-  if (s.prn && deletedStudentIds.has(String(s.prn).toUpperCase())) return true;
-  return false;
-}
-
-// 1. Live State Loader — cleans previous student records while preserving teachers and HOD accounts
-function getInitialCache() {
-  try {
-    const local = localStorage.getItem('sy_cloud_cache_v12');
-    if (local) {
-      memoryCache = JSON.parse(local);
-      return memoryCache;
-    }
-
-    // Extract ONLY teachers and HOD accounts from any previous versions
-    let preservedTeachers = [];
-    let preservedHod = {};
-    const oldKeys = ['sy_cloud_cache_v11', 'sy_cloud_cache_v10', 'sy_cloud_cache_v9', 'sy_cloud_cache_v8', 'sy_cloud_cache_v7', 'sy_cloud_cache_v6', 'sy_cloud_cache_v5'];
-    for (const k of oldKeys) {
-      try {
-        const val = localStorage.getItem(k);
-        if (val) {
-          const parsed = JSON.parse(val);
-          if (Array.isArray(parsed.teachers) && parsed.teachers.length > preservedTeachers.length) {
-            preservedTeachers = parsed.teachers;
-          }
-          if (parsed.hodAccounts && Object.keys(parsed.hodAccounts).length > Object.keys(preservedHod).length) {
-            preservedHod = { ...preservedHod, ...parsed.hodAccounts };
-          }
-          // Clean out old student-containing cache
-          localStorage.removeItem(k);
-        }
-      } catch (e) {}
-    }
-
-    memoryCache = {
-      students: [],
-      sessions: [],
-      logs: [],
-      hodAccounts: preservedHod,
-      teachers: preservedTeachers
-    };
-    persistLocalState(memoryCache);
-    return memoryCache;
-  } catch (e) {}
-
-  if (memoryCache) return memoryCache;
-
-  memoryCache = {
-    students: [],
-    sessions: [],
-    logs: [],
-    hodAccounts: {},
-    teachers: []
-  };
-  return memoryCache;
-}
 
 function persistLocalState(state) {
   memoryCache = state;
   try {
-    localStorage.setItem('sy_cloud_cache_v11', JSON.stringify(state));
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(state));
   } catch (e) {}
 }
 
-// 2. Non-blocking asynchronous cloud broadcast (< 50ms)
-function broadcastToCloudAsync(state) {
-  if (typeof window === 'undefined') return;
+// ==========================================
+// REAL-TIME FIRESTORE LIVE SYNC LISTENERS
+// ==========================================
+let isListenersInitialized = false;
 
-  // Lightweight state (sanitize and strip heavy photos to keep payload < 5KB)
-  const lightweightState = {
-    students: (state.students || []).filter(s => !isStudentDeleted(s)).map(s => ({
-      id: s.id,
-      rollNo: s.rollNo,
-      name: s.name,
-      prn: s.prn,
-      department: s.department,
-      division: s.division,
-      batch: s.batch,
-      attendancePercentage: s.attendancePercentage,
-      isDefaulter: s.isDefaulter,
-      boundDeviceId: s.boundDeviceId,
-      boundAt: s.boundAt,
-      activeSessionToken: s.activeSessionToken,
-      lastLoginAt: s.lastLoginAt
-    })),
-    sessions: (state.sessions || []).slice(0, 30),
-    logs: (state.logs || []).slice(0, 200),
-    hodAccounts: state.hodAccounts || {},
-    teachers: (state.teachers || []).map(t => ({
-      id: t.id,
-      name: t.name,
-      department: t.department,
-      subjectName: t.subjectName,
-      divisions: t.divisions,
-      division: t.division,
-      batch: t.batch,
-      password: t.password,
-      role: t.role || 'teacher',
-      registeredAt: t.registeredAt
-    }))
-  };
-
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 2000);
-
-  fetch(SYNC_URL, {
-    method: 'POST',
-    headers: {
-      'Title': 'STATE_DELTA',
-      'Priority': 'urgent'
-    },
-    body: JSON.stringify(lightweightState),
-    signal: controller.signal
-  })
-    .then(() => clearTimeout(timeoutId))
-    .catch(() => clearTimeout(timeoutId));
-}
-
-// 3. Fast Background Revalidator
-async function revalidateCloudStateInBackground() {
-  if (isSyncing) return;
-  isSyncing = true;
+function initRealtimeListeners() {
+  if (isListenersInitialized || typeof window === 'undefined') return;
+  isListenersInitialized = true;
 
   try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 2500);
-
-    const res = await fetch(`${SYNC_URL}/json?poll=1`, {
-      cache: 'no-store',
-      signal: controller.signal
+    // 1. Live Students Listener
+    onSnapshot(collection(db, 'students'), (snapshot) => {
+      const liveStudents = [];
+      snapshot.forEach(docSnap => {
+        if (docSnap.exists()) {
+          liveStudents.push({ id: docSnap.id, ...docSnap.data() });
+        }
+      });
+      memoryCache.students = liveStudents;
+      persistLocalState(memoryCache);
+    }, (err) => {
+      console.warn('Firestore students listener fallback:', err.message);
     });
 
-    clearTimeout(timeoutId);
-
-    if (res.ok) {
-      const text = await res.text();
-      const lines = text.trim().split('\n').filter(Boolean);
-      const current = getInitialCache();
-
-      const studentMap = new Map();
-      (current.students || []).forEach(s => {
-        if (s && !isStudentDeleted(s)) {
-          const key = s.id || `S_${String(s.department || '').toLowerCase()}_${String(s.division || 'SY-A').toUpperCase()}_${s.rollNo}`;
-          studentMap.set(key, s);
+    // 2. Live Sessions Listener
+    onSnapshot(query(collection(db, 'sessions'), orderBy('startTime', 'desc'), limit(50)), (snapshot) => {
+      const liveSessions = [];
+      snapshot.forEach(docSnap => {
+        if (docSnap.exists()) {
+          liveSessions.push({ id: docSnap.id, ...docSnap.data() });
         }
       });
+      memoryCache.sessions = liveSessions;
+      persistLocalState(memoryCache);
+    }, (err) => {
+      console.warn('Firestore sessions listener fallback:', err.message);
+    });
 
-      const sessionMap = new Map();
-      (current.sessions || []).forEach(s => {
-        if (s && !deletedSessionIds.has(s.id)) sessionMap.set(s.id, s);
-      });
-
-      const teacherMap = new Map();
-      (current.teachers || []).forEach(t => {
-        if (t && !deletedTeacherIds.has(t.id)) teacherMap.set(t.id, t);
-      });
-
-      let hodMap = { ...(current.hodAccounts || {}) };
-      let allLogs = [...(current.logs || [])];
-
-      for (let i = 0; i < lines.length; i++) {
-        try {
-          const item = JSON.parse(lines[i]);
-          if (item && item.event === 'message' && item.message) {
-            const parsed = JSON.parse(item.message);
-            if (parsed && typeof parsed === 'object') {
-              
-              (parsed.students || []).forEach(s => {
-                if (s && !isStudentDeleted(s)) {
-                  const key = s.id || `S_${String(s.department || '').toLowerCase()}_${String(s.division || 'SY-A').toUpperCase()}_${s.rollNo}`;
-                  const existing = studentMap.get(key);
-                  studentMap.set(key, { ...(existing || {}), ...s });
-                }
-              });
-
-              if (parsed.hodAccounts) {
-                hodMap = { ...hodMap, ...parsed.hodAccounts };
-              }
-
-              (parsed.sessions || []).forEach(s => {
-                if (s && !deletedSessionIds.has(s.id)) {
-                  sessionMap.set(s.id, { ...(sessionMap.get(s.id) || {}), ...s });
-                }
-              });
-
-              (parsed.teachers || []).forEach(t => {
-                if (t && !deletedTeacherIds.has(t.id)) {
-                  teacherMap.set(t.id, { ...(teacherMap.get(t.id) || {}), ...t });
-                }
-              });
-
-              if (Array.isArray(parsed.logs)) {
-                allLogs = [...allLogs, ...parsed.logs];
-              }
-            }
-          }
-        } catch (e) {}
-      }
-
-      // Deduplicate logs
-      const logMap = new Map();
-      allLogs.forEach(l => {
-        if (l && l.studentId && !deletedStudentIds.has(l.studentId)) {
-          const lk = `${l.type}_${l.studentId}_${l.timestamp}`;
-          logMap.set(lk, l);
+    // 3. Live Teachers Listener
+    onSnapshot(collection(db, 'teachers'), (snapshot) => {
+      const liveTeachers = [];
+      snapshot.forEach(docSnap => {
+        if (docSnap.exists()) {
+          liveTeachers.push({ id: docSnap.id, ...docSnap.data() });
         }
       });
+      memoryCache.teachers = liveTeachers;
+      persistLocalState(memoryCache);
+    }, (err) => {
+      console.warn('Firestore teachers listener fallback:', err.message);
+    });
 
-      const mergedState = {
-        students: Array.from(studentMap.values()),
-        sessions: Array.from(sessionMap.values()),
-        logs: Array.from(logMap.values()).slice(0, 500),
-        hodAccounts: hodMap,
-        teachers: Array.from(teacherMap.values())
-      };
+    // 4. Live HOD Accounts Listener
+    onSnapshot(collection(db, 'hodAccounts'), (snapshot) => {
+      const hodMap = {};
+      snapshot.forEach(docSnap => {
+        if (docSnap.exists()) {
+          hodMap[docSnap.id] = docSnap.data();
+        }
+      });
+      memoryCache.hodAccounts = hodMap;
+      persistLocalState(memoryCache);
+    }, (err) => {
+      console.warn('Firestore hod listener fallback:', err.message);
+    });
 
-      persistLocalState(mergedState);
-    }
+    // 5. Live Logs Listener
+    onSnapshot(query(collection(db, 'logs'), orderBy('timestamp', 'desc'), limit(200)), (snapshot) => {
+      const liveLogs = [];
+      snapshot.forEach(docSnap => {
+        if (docSnap.exists()) {
+          liveLogs.push({ id: docSnap.id, ...docSnap.data() });
+        }
+      });
+      memoryCache.logs = liveLogs;
+      persistLocalState(memoryCache);
+    }, (err) => {
+      console.warn('Firestore logs listener fallback:', err.message);
+    });
+
   } catch (err) {
-    // Silent background timeout
-  } finally {
-    isSyncing = false;
+    console.warn('Firestore real-time listeners initialization error:', err);
   }
 }
 
-// Auto background sync every 3 seconds
-if (typeof window !== 'undefined') {
-  setInterval(revalidateCloudStateInBackground, 3000);
-}
+// Start listeners immediately
+initRealtimeListeners();
 
+// ==========================================
+// UNIFIED CLOUDSYNC SERVICE (FIRESTORE)
+// ==========================================
 export const CloudSync = {
+  getInitialCache: () => memoryCache,
+
   // 1. HOD ACCOUNTS
   getHodAccounts: async () => {
-    revalidateCloudStateInBackground();
-    const state = getInitialCache();
-    return state.hodAccounts || {};
+    initRealtimeListeners();
+    try {
+      const snapshot = await getDocs(collection(db, 'hodAccounts'));
+      const hodMap = {};
+      snapshot.forEach(docSnap => {
+        if (docSnap.exists()) hodMap[docSnap.id] = docSnap.data();
+      });
+      memoryCache.hodAccounts = { ...memoryCache.hodAccounts, ...hodMap };
+      persistLocalState(memoryCache);
+      return memoryCache.hodAccounts;
+    } catch (e) {
+      return memoryCache.hodAccounts || {};
+    }
   },
 
   saveHodAccount: async (department, accountData) => {
-    const state = getInitialCache();
-    state.hodAccounts = state.hodAccounts || {};
-    state.hodAccounts[department] = {
+    const cleanDept = String(department).toLowerCase();
+    const cleanData = {
       name: (accountData.name || '').trim(),
       password: accountData.password,
       configuredAt: new Date().toISOString()
     };
-    persistLocalState(state);
-    broadcastToCloudAsync(state);
-    return state.hodAccounts[department];
+    memoryCache.hodAccounts = memoryCache.hodAccounts || {};
+    memoryCache.hodAccounts[cleanDept] = cleanData;
+    persistLocalState(memoryCache);
+
+    try {
+      await setDoc(doc(db, 'hodAccounts', cleanDept), cleanData, { merge: true });
+    } catch (e) {
+      console.warn('Firestore saveHodAccount error:', e.message);
+    }
+    return cleanData;
   },
 
-  // 2. STUDENTS ROSTER (STRICT DIVISION & DEPARTMENT ISOLATION)
+  // 2. STUDENTS ROSTER
   getStudents: async (department = null, division = null) => {
-    revalidateCloudStateInBackground();
-    const state = getInitialCache();
-    let list = state.students || [];
+    initRealtimeListeners();
+    let list = memoryCache.students || [];
+
+    try {
+      const snapshot = await getDocs(collection(db, 'students'));
+      const fetched = [];
+      snapshot.forEach(docSnap => {
+        if (docSnap.exists()) fetched.push({ id: docSnap.id, ...docSnap.data() });
+      });
+      if (fetched.length > 0) {
+        memoryCache.students = fetched;
+        persistLocalState(memoryCache);
+        list = fetched;
+      }
+    } catch (e) {
+      // Use memory cache
+    }
 
     if (department && department !== 'all') {
       const cleanDept = String(department).toLowerCase();
@@ -309,9 +200,6 @@ export const CloudSync = {
   },
 
   saveStudent: async (student) => {
-    const state = getInitialCache();
-    state.students = state.students || [];
-
     const canonicalDept = String(student.department || 'entc').toLowerCase();
     const canonicalDiv = String(student.division || 'SY-A').toUpperCase();
     const canonicalRoll = Number(student.rollNo);
@@ -325,110 +213,100 @@ export const CloudSync = {
       rollNo: canonicalRoll
     };
 
-    // Remove from deletion tombstones if re-registering
-    deletedStudentIds.delete(canonicalId);
-    deletedStudentIds.delete(cleanStudent.id);
-    if (cleanStudent.prn) deletedStudentIds.delete(String(cleanStudent.prn).toUpperCase());
-    persistDeletionTombstones();
-
-    const idx = state.students.findIndex(s =>
-      s.id === canonicalId ||
-      (Number(s.rollNo) === canonicalRoll &&
-       String(s.department || '').toLowerCase() === canonicalDept &&
-       String(s.division || '').toUpperCase() === canonicalDiv)
-    );
-
+    const idx = (memoryCache.students || []).findIndex(s => s.id === canonicalId);
     if (idx >= 0) {
-      state.students[idx] = { ...state.students[idx], ...cleanStudent };
+      memoryCache.students[idx] = { ...memoryCache.students[idx], ...cleanStudent };
     } else {
-      state.students.push(cleanStudent);
+      memoryCache.students = memoryCache.students || [];
+      memoryCache.students.push(cleanStudent);
     }
+    persistLocalState(memoryCache);
 
-    persistLocalState(state);
-    broadcastToCloudAsync(state);
+    try {
+      await setDoc(doc(db, 'students', canonicalId), cleanStudent, { merge: true });
+    } catch (e) {
+      console.warn('Firestore saveStudent error:', e.message);
+    }
     return cleanStudent;
   },
 
   deleteStudent: async (studentId) => {
-    const state = getInitialCache();
-    const targetStudent = (state.students || []).find(s => s.id === studentId || String(s.rollNo) === String(studentId));
+    memoryCache.students = (memoryCache.students || []).filter(s => s.id !== studentId && String(s.rollNo) !== String(studentId));
+    memoryCache.logs = (memoryCache.logs || []).filter(l => l.studentId !== studentId);
+    persistLocalState(memoryCache);
 
-    deletedStudentIds.add(studentId);
-    if (targetStudent) {
-      deletedStudentIds.add(targetStudent.id);
-      const canonicalKey = `S_${String(targetStudent.department || '').toLowerCase()}_${String(targetStudent.division || 'SY-A').toUpperCase()}_${targetStudent.rollNo}`;
-      deletedStudentIds.add(canonicalKey);
-      if (targetStudent.prn) deletedStudentIds.add(String(targetStudent.prn).toUpperCase());
+    try {
+      await deleteDoc(doc(db, 'students', studentId));
+    } catch (e) {
+      console.warn('Firestore deleteStudent error:', e.message);
     }
-    persistDeletionTombstones();
-
-    state.students = (state.students || []).filter(s => !isStudentDeleted(s) && s.id !== studentId);
-    state.logs = (state.logs || []).filter(l => l.studentId !== studentId && (!targetStudent || (Number(l.rollNo) !== Number(targetStudent.rollNo) || String(l.division).toUpperCase() !== String(targetStudent.division).toUpperCase())));
-    
-    // Purge from all session attendees
-    state.sessions = (state.sessions || []).map(sess => {
-      const remainingAttendees = (sess.attendees || []).filter(a => a.studentId !== studentId && (!targetStudent || Number(a.rollNo) !== Number(targetStudent.rollNo)));
-      return {
-        ...sess,
-        totalPresent: remainingAttendees.length,
-        attendees: remainingAttendees
-      };
-    });
-
-    persistLocalState(state);
-    broadcastToCloudAsync(state);
   },
 
   clearDepartmentStudents: async (department, division = null) => {
-    const state = getInitialCache();
     const cleanDept = String(department).toLowerCase();
-    
-    (state.students || []).forEach(s => {
-      if (String(s.department || '').toLowerCase() === cleanDept) {
-        if (!division || String(s.division || '').toUpperCase() === String(division).toUpperCase()) {
-          deletedStudentIds.add(s.id);
-          const canonicalKey = `S_${cleanDept}_${String(s.division || 'SY-A').toUpperCase()}_${s.rollNo}`;
-          deletedStudentIds.add(canonicalKey);
-        }
-      }
-    });
-    persistDeletionTombstones();
+    const toDelete = [];
 
-    state.students = (state.students || []).filter(s => {
+    memoryCache.students = (memoryCache.students || []).filter(s => {
       const matchDept = String(s.department || '').toLowerCase() === cleanDept;
       if (!matchDept) return true;
-      if (division) return String(s.division || '').toUpperCase() !== String(division).toUpperCase();
+      if (division) {
+        const matchDiv = String(s.division || '').toUpperCase() === String(division).toUpperCase();
+        if (matchDiv) toDelete.push(s.id);
+        return !matchDiv;
+      }
+      toDelete.push(s.id);
       return false;
     });
+    persistLocalState(memoryCache);
 
-    state.logs = (state.logs || []).filter(l => {
-      const matchDept = String(l.department || '').toLowerCase() === cleanDept;
-      if (!matchDept) return true;
-      if (division) return String(l.division || '').toUpperCase() !== String(division).toUpperCase();
-      return false;
-    });
-
-    persistLocalState(state);
-    broadcastToCloudAsync(state);
+    // Delete from Firestore
+    for (const sId of toDelete) {
+      try {
+        await deleteDoc(doc(db, 'students', sId));
+      } catch (e) {}
+    }
   },
 
   resetDevice: async (studentId) => {
-    const state = getInitialCache();
-    state.students = (state.students || []).map(s => {
-      if (s.id === studentId) {
+    memoryCache.students = (memoryCache.students || []).map(s => {
+      if (s.id === studentId || String(s.rollNo) === String(studentId)) {
         return { ...s, boundDeviceId: null, boundAt: null, activeSessionToken: null };
       }
       return s;
     });
-    persistLocalState(state);
-    broadcastToCloudAsync(state);
+    persistLocalState(memoryCache);
+
+    try {
+      const target = (memoryCache.students || []).find(s => s.id === studentId || String(s.rollNo) === String(studentId));
+      if (target) {
+        await setDoc(doc(db, 'students', target.id), {
+          boundDeviceId: null,
+          boundAt: null,
+          activeSessionToken: null
+        }, { merge: true });
+      }
+    } catch (e) {
+      console.warn('Firestore resetDevice error:', e.message);
+    }
   },
 
   // 3. CONDUCTED LECTURE SESSIONS
   getSessions: async (department = null) => {
-    revalidateCloudStateInBackground();
-    const state = getInitialCache();
-    let list = state.sessions || [];
+    initRealtimeListeners();
+    let list = memoryCache.sessions || [];
+
+    try {
+      const snapshot = await getDocs(query(collection(db, 'sessions'), orderBy('startTime', 'desc'), limit(50)));
+      const fetched = [];
+      snapshot.forEach(docSnap => {
+        if (docSnap.exists()) fetched.push({ id: docSnap.id, ...docSnap.data() });
+      });
+      if (fetched.length > 0) {
+        memoryCache.sessions = fetched;
+        persistLocalState(memoryCache);
+        list = fetched;
+      }
+    } catch (e) {}
 
     if (department && department !== 'all') {
       list = list.filter(s => String(s.department || '').toLowerCase() === String(department).toLowerCase());
@@ -439,36 +317,51 @@ export const CloudSync = {
   },
 
   saveSession: async (session) => {
-    const state = getInitialCache();
-    state.sessions = state.sessions || [];
-
-    const idx = state.sessions.findIndex(s => s.id === session.id);
+    const idx = (memoryCache.sessions || []).findIndex(s => s.id === session.id);
     if (idx >= 0) {
-      state.sessions[idx] = { ...state.sessions[idx], ...session };
+      memoryCache.sessions[idx] = { ...memoryCache.sessions[idx], ...session };
     } else {
-      state.sessions.unshift(session);
+      memoryCache.sessions = memoryCache.sessions || [];
+      memoryCache.sessions.unshift(session);
     }
+    persistLocalState(memoryCache);
 
-    persistLocalState(state);
-    broadcastToCloudAsync(state);
+    try {
+      await setDoc(doc(db, 'sessions', session.id), session, { merge: true });
+    } catch (e) {
+      console.warn('Firestore saveSession error:', e.message);
+    }
     return session;
   },
 
   deleteSession: async (sessionId) => {
-    deletedSessionIds.add(sessionId);
-    persistDeletionTombstones();
+    memoryCache.sessions = (memoryCache.sessions || []).filter(s => s.id !== sessionId);
+    persistLocalState(memoryCache);
 
-    const state = getInitialCache();
-    state.sessions = (state.sessions || []).filter(s => s.id !== sessionId);
-    persistLocalState(state);
-    broadcastToCloudAsync(state);
+    try {
+      await deleteDoc(doc(db, 'sessions', sessionId));
+    } catch (e) {
+      console.warn('Firestore deleteSession error:', e.message);
+    }
   },
 
   // 4. AUDIT LOGS
   getLogs: async (department = null) => {
-    revalidateCloudStateInBackground();
-    const state = getInitialCache();
-    let list = state.logs || [];
+    initRealtimeListeners();
+    let list = memoryCache.logs || [];
+
+    try {
+      const snapshot = await getDocs(query(collection(db, 'logs'), orderBy('timestamp', 'desc'), limit(150)));
+      const fetched = [];
+      snapshot.forEach(docSnap => {
+        if (docSnap.exists()) fetched.push({ id: docSnap.id, ...docSnap.data() });
+      });
+      if (fetched.length > 0) {
+        memoryCache.logs = fetched;
+        persistLocalState(memoryCache);
+        list = fetched;
+      }
+    } catch (e) {}
 
     if (department && department !== 'all') {
       list = list.filter(l => String(l.department || '').toLowerCase() === String(department).toLowerCase());
@@ -479,85 +372,89 @@ export const CloudSync = {
   },
 
   saveLog: async (log) => {
-    const state = getInitialCache();
-    state.logs = state.logs || [];
+    const logId = log.id || `LOG_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const fullLog = { ...log, id: logId };
+    memoryCache.logs = memoryCache.logs || [];
+    memoryCache.logs.unshift(fullLog);
+    if (memoryCache.logs.length > 200) memoryCache.logs.pop();
+    persistLocalState(memoryCache);
 
-    const cleanLog = {
-      id: log.id || `LOG_${Date.now()}_${log.rollNo || Math.floor(Math.random() * 1000)}`,
-      type: log.type || 'STUDENT_LOG',
-      studentId: log.studentId,
-      studentName: log.studentName || 'Student',
-      rollNo: log.rollNo,
-      prn: log.prn,
-      department: log.department,
-      division: log.division,
-      deviceId: log.deviceId,
-      status: log.status || 'SUCCESS',
-      timestamp: new Date().toISOString()
-    };
-
-    state.logs.unshift(cleanLog);
-    if (state.logs.length > 500) state.logs = state.logs.slice(0, 500);
-
-    persistLocalState(state);
-    broadcastToCloudAsync(state);
-    return cleanLog;
+    try {
+      await setDoc(doc(db, 'logs', logId), fullLog, { merge: true });
+    } catch (e) {
+      console.warn('Firestore saveLog error:', e.message);
+    }
+    return fullLog;
   },
 
-  // 5. TEACHERS & FACULTY
-  getTeachers: async (dept = null) => {
-    revalidateCloudStateInBackground();
-    const state = getInitialCache();
-    let list = state.teachers || [];
-    if (dept && dept !== 'all') {
-      list = list.filter(t => String(t.department || '').toLowerCase() === String(dept).toLowerCase());
+  // 5. REGISTERED TEACHERS
+  getTeachers: async (department = null) => {
+    initRealtimeListeners();
+    let list = memoryCache.teachers || [];
+
+    try {
+      const snapshot = await getDocs(collection(db, 'teachers'));
+      const fetched = [];
+      snapshot.forEach(docSnap => {
+        if (docSnap.exists()) fetched.push({ id: docSnap.id, ...docSnap.data() });
+      });
+      if (fetched.length > 0) {
+        memoryCache.teachers = fetched;
+        persistLocalState(memoryCache);
+        list = fetched;
+      }
+    } catch (e) {}
+
+    if (department && department !== 'all') {
+      list = list.filter(t => String(t.department || '').toLowerCase() === String(department).toLowerCase());
     }
+
     return list;
   },
 
   saveTeacher: async (teacher) => {
-    const state = getInitialCache();
-    state.teachers = state.teachers || [];
-    const idx = state.teachers.findIndex(t => 
-      t.id === teacher.id || 
-      (t.name?.trim().toLowerCase() === teacher.name?.trim().toLowerCase() && 
-       String(t.department || '').toLowerCase() === String(teacher.department || '').toLowerCase())
-    );
+    const teacherId = teacher.id || `T_${String(teacher.department || 'entc').toLowerCase()}_${Date.now()}`;
+    const cleanTeacher = { ...teacher, id: teacherId };
+
+    const idx = (memoryCache.teachers || []).findIndex(t => t.id === teacherId);
     if (idx >= 0) {
-      state.teachers[idx] = { ...state.teachers[idx], ...teacher };
+      memoryCache.teachers[idx] = { ...memoryCache.teachers[idx], ...cleanTeacher };
     } else {
-      state.teachers.push(teacher);
+      memoryCache.teachers = memoryCache.teachers || [];
+      memoryCache.teachers.push(cleanTeacher);
     }
-    persistLocalState(state);
-    broadcastToCloudAsync(state);
-    return teacher;
+    persistLocalState(memoryCache);
+
+    try {
+      await setDoc(doc(db, 'teachers', teacherId), cleanTeacher, { merge: true });
+    } catch (e) {
+      console.warn('Firestore saveTeacher error:', e.message);
+    }
+    return cleanTeacher;
   },
 
   deleteTeacher: async (teacherId) => {
-    deletedTeacherIds.add(teacherId);
-    persistDeletionTombstones();
+    memoryCache.teachers = (memoryCache.teachers || []).filter(t => t.id !== teacherId);
+    persistLocalState(memoryCache);
 
-    const state = getInitialCache();
-    state.teachers = (state.teachers || []).filter(t => t.id !== teacherId);
-    persistLocalState(state);
-    broadcastToCloudAsync(state);
+    try {
+      await deleteDoc(doc(db, 'teachers', teacherId));
+    } catch (e) {
+      console.warn('Firestore deleteTeacher error:', e.message);
+    }
   },
 
   resetTeacherPassword: async (teacherId, newPassword = 'password123') => {
-    const state = getInitialCache();
-    state.teachers = (state.teachers || []).map(t => {
-      if (t.id === teacherId) {
-        return { ...t, password: newPassword, passwordResetAt: new Date().toISOString() };
-      }
+    memoryCache.teachers = (memoryCache.teachers || []).map(t => {
+      if (t.id === teacherId) return { ...t, password: newPassword };
       return t;
     });
-    persistLocalState(state);
-    broadcastToCloudAsync(state);
-  },
+    persistLocalState(memoryCache);
 
-  // 6. FORCE REFRESH (INSTANT SYNC TRIGGER)
-  forceRefresh: async () => {
-    await revalidateCloudStateInBackground();
-    return getInitialCache();
+    try {
+      await setDoc(doc(db, 'teachers', teacherId), { password: newPassword }, { merge: true });
+    } catch (e) {
+      console.warn('Firestore resetTeacherPassword error:', e.message);
+    }
   }
 };
