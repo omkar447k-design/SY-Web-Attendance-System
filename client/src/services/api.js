@@ -1,48 +1,4 @@
-import { io } from 'socket.io-client';
 import { CloudSync } from './cloudSync';
-
-const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-  ? `http://${window.location.hostname}:5000`
-  : '';
-
-let socket = null;
-
-export function getSocket() {
-  if (!socket) {
-    socket = io(API_BASE, {
-      transports: ['websocket', 'polling']
-    });
-  }
-  return socket;
-}
-
-async function request(endpoint, options = {}) {
-  const url = `${API_BASE}${endpoint}`;
-  const headers = {
-    'Content-Type': 'application/json',
-    ...(options.headers || {})
-  };
-
-  try {
-    const res = await fetch(url, { ...options, headers });
-    const text = await res.text();
-    let json = {};
-    try {
-      json = JSON.parse(text);
-    } catch (parseErr) {
-      console.warn(`Non-JSON response from ${endpoint}:`, text.slice(0, 100));
-      throw new Error(`Server returned status ${res.status}.`);
-    }
-
-    if (!res.ok) {
-      throw new Error(json.error || json.message || `Request failed with status ${res.status}`);
-    }
-    return json;
-  } catch (err) {
-    console.warn(`API check on [${endpoint}]:`, err.message);
-    throw err;
-  }
-}
 
 const DEPARTMENTS_LIST = [
   { id: 'comp', name: '1. Computer Science & Engineering', code: 'CSE' },
@@ -226,14 +182,14 @@ export const api = {
     await CloudSync.deleteTeacher(teacherId);
     return { success: true, message: 'Faculty member removed from department roster.' };
   },
-  getSettings: () => request('/api/admin/settings'),
-  updateSettings: (data) => request('/api/admin/settings', { method: 'POST', body: JSON.stringify(data) }),
+  getSettings: async () => ({ success: true, settings: {} }),
+  updateSettings: async (data) => ({ success: true, settings: data }),
   getTeachers: async (dept) => {
     const teachers = await CloudSync.getTeachers(dept);
     return { success: true, data: teachers };
   },
-  getSubjects: () => request('/api/admin/subjects'),
-  getMasterExcelUrl: (division = 'SY-A') => `${API_BASE}/api/admin/export/master?division=${division}`,
+  getSubjects: async () => ({ success: true, data: [] }),
+  getMasterExcelUrl: (division = 'SY-A') => '',
 
   // Faculty / Teacher Registration (Instant 1-Click Profile Creation)
   teacherRegister: async (data) => {
@@ -316,7 +272,7 @@ export const api = {
   teacherAuth: async (data) => {
     return api.teacherLogin(data);
   },
-  checkTeacherStatus: (data) => request('/api/teacher/check-status', { method: 'POST', body: JSON.stringify(data) }),
+  checkTeacherStatus: async (data) => ({ success: true }),
   getTeacherActiveSession: async (teacherId) => {
     const sessions = await CloudSync.getSessions();
     const now = Date.now();

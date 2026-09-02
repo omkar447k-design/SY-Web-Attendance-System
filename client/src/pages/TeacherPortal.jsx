@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Play, Plus, Square, Download, Users, Clock, CheckCircle, RefreshCw, UserPlus, Building2, CheckSquare, Square as SquareIcon, CheckCircle2, FileSpreadsheet, X, ArrowLeft, BookOpen, ChevronDown, ChevronUp, Trash2 } from 'lucide-react';
-import { api, getSocket, getRotatingPinForSession } from '../services/api';
+import { api, getRotatingPinForSession } from '../services/api';
 import { TimerRing } from '../components/TimerRing';
 import { exportLectureExcelFile } from '../services/excelExport';
 
@@ -144,40 +144,6 @@ export function TeacherPortal({ teacher, onBack }) {
     const pollInterval = setInterval(poll, 3000);
     return () => clearInterval(pollInterval);
   }, [activeSession?.id, teacher.id]);
-
-  // 3. WebSocket Listener
-  useEffect(() => {
-    const socket = getSocket();
-    if (activeSession?.id) {
-      socket.emit('join_session', activeSession.id);
-    }
-
-    const handlePinTick = (data) => {
-      if (activeSession && data.sessionId === activeSession.id) {
-        setActiveSession(prev => ({
-          ...prev,
-          pinInfo: data.pinInfo,
-          remainingSessionSec: data.remainingSessionSec,
-          totalPresent: data.totalPresent,
-          totalStudents: data.totalStudents,
-          attendees: data.attendees
-        }));
-      }
-    };
-
-    const handleSessionClosed = () => {
-      setActiveSession(null);
-      loadConductedLectures();
-    };
-
-    socket.on('pin_tick', handlePinTick);
-    socket.on('session_closed', handleSessionClosed);
-
-    return () => {
-      socket.off('pin_tick', handlePinTick);
-      socket.off('session_closed', handleSessionClosed);
-    };
-  }, [activeSession?.id]);
 
   const toggleDivision = (div) => {
     setSelectedDivisions(prev => {
