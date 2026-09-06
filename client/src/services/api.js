@@ -370,10 +370,17 @@ export const api = {
       target.attendees = target.attendees || [];
       const rollNum = Number(rollNo);
       if (!target.attendees.some(a => Number(a.rollNo) === rollNum)) {
+        const registered = await CloudSync.getStudents(target.department, target.division);
+        const matched = registered.find(s => Number(s.rollNo) === rollNum);
+        const resolvedName = matched?.name || `Roll No. ${rollNum}`;
+        const resolvedPrn = matched?.prn || `12251ET${String(rollNum).padStart(3, '0')}`;
+
         target.attendees.push({
-          studentId: `S_${target.department}_${target.division}_${rollNum}`,
+          studentId: matched?.id || `S_${target.department}_${target.division}_${rollNum}`,
           rollNo: rollNum,
-          name: `Roll No. ${rollNum}`,
+          name: resolvedName,
+          studentName: resolvedName,
+          prn: resolvedPrn,
           timestamp: new Date().toISOString(),
           status: 'Present (Manual)'
         });
@@ -383,7 +390,7 @@ export const api = {
     }
     return { success: true, message: 'Attendance marked manually' };
   },
-  getSessionExcelUrl: (sessionId) => `${API_BASE}/api/teacher/session/${sessionId}/export`,
+  getSessionExcelUrl: (sessionId) => '',
 
   // 1. STUDENT REGISTRATION (First-Time Binding & ID OCR)
   studentRegister: async (data) => {
@@ -596,11 +603,23 @@ export const api = {
       return { success: true, message: 'You have already marked attendance for this lecture.' };
     }
 
+    const registered = await CloudSync.getStudents(cleanDept, cleanDiv);
+    const matched = registered.find(s => Number(s.rollNo) === rollNum);
+    const resolvedName = (matched?.name && matched.name !== 'Student') 
+      ? matched.name 
+      : (data.studentName && data.studentName !== 'Student') 
+        ? data.studentName 
+        : (data.name && data.name !== 'Student')
+          ? data.name
+          : `Student (Roll ${rollNum})`;
+    const resolvedPrn = matched?.prn || data.prn || `12251ET${String(rollNum).padStart(3, '0')}`;
+
     const attendeeRecord = {
-      studentId: data.studentId || `S_${cleanDept}_${cleanDiv}_${rollNum}`,
+      studentId: data.studentId || matched?.id || `S_${cleanDept}_${cleanDiv}_${rollNum}`,
       rollNo: rollNum,
-      name: data.studentName || 'Student',
-      prn: data.prn || '',
+      name: resolvedName,
+      studentName: resolvedName,
+      prn: resolvedPrn,
       department: cleanDept,
       division: cleanDiv,
       timestamp: new Date().toISOString(),
@@ -614,9 +633,9 @@ export const api = {
     await CloudSync.saveLog({
       type: 'ATTENDANCE_MARKED',
       studentId: attendeeRecord.studentId,
-      studentName: data.studentName,
+      studentName: resolvedName,
       rollNo: rollNum,
-      prn: data.prn,
+      prn: resolvedPrn,
       department: cleanDept,
       division: cleanDiv,
       status: 'PRESENT',
@@ -625,5 +644,5 @@ export const api = {
 
     return { success: true, message: '✅ Attendance Marked Successfully!' };
   },
-  getStudentDashboard: (studentId) => request(`/api/student/dashboard/${studentId}`)
+  getStudentDashboard: async (studentId) => ({ success: true })
 };

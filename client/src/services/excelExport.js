@@ -1,4 +1,5 @@
 import * as XLSX from 'xlsx';
+import { CloudSync } from './cloudSync.js';
 
 const DEPT_NAMES = {
   comp: 'Computer Science & Engineering',
@@ -9,13 +10,18 @@ const DEPT_NAMES = {
   instru: 'Instrumentation Engineering'
 };
 
-function getRegisteredRoster() {
+async function getRegisteredRoster(department, division) {
   try {
-    const raw = localStorage.getItem('sy_perm_students');
-    return raw ? JSON.parse(raw) : [];
-  } catch (e) {
-    return [];
-  }
+    const students = await CloudSync.getStudents(department, division);
+    if (Array.isArray(students) && students.length > 0) return students;
+  } catch (e) {}
+
+  try {
+    const cache = CloudSync.getInitialCache ? CloudSync.getInitialCache() : null;
+    if (cache && Array.isArray(cache.students)) return cache.students;
+  } catch (e) {}
+
+  return [];
 }
 
 /**
@@ -23,12 +29,12 @@ function getRegisteredRoster() {
  * - Header: Department, Division, Subject Name, Faculty Name, Date & Time
  * - Table (Sequential Roll No. 1 to 80):
  *   Column 1: Roll No. (1, 2, 3... 80)
- *   Column 2: Student Name (Fetched from roster or marked attendee; blank if absent & unregistered)
- *   Column 3: PRN / Enrollment No. (Fetched from roster or marked attendee; blank if absent & unregistered)
+ *   Column 2: Student Name (Fetched from roster or marked attendee)
+ *   Column 3: PRN / Enrollment No. (Fetched from roster or marked attendee)
  *   Column 4: Attendance Status (PRESENT or ABSENT)
  *   Column 5: Marked Time (Formatted timestamp for present; blank for absent)
  */
-export function exportLectureExcelFile(session) {
+export async function exportLectureExcelFile(session) {
   if (!session) return;
 
   const departmentName = DEPT_NAMES[session.department] || (session.department || 'Engineering').toUpperCase();
@@ -41,7 +47,7 @@ export function exportLectureExcelFile(session) {
     : new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
   const attendees = session.attendees || [];
-  const registeredStudents = getRegisteredRoster();
+  const registeredStudents = await getRegisteredRoster(session.department, session.division);
   const sessionDivs = session.divisions || (session.division ? session.division.split(',').map(d => d.trim()) : ['SY-A']);
 
   // Create fast lookup maps with strict Division & Department segregation
@@ -88,10 +94,12 @@ export function exportLectureExcelFile(session) {
 
     if (att) {
       // Student is PRESENT
-      const studentName = att.studentName && att.studentName !== 'Student' 
+      const studentName = (att.studentName && att.studentName !== 'Student') 
         ? att.studentName 
-        : (reg?.name || 'Verified Student');
-      const prn = att.prn && att.prn !== '-' 
+        : (att.name && att.name !== 'Student')
+          ? att.name
+          : (reg?.name || `Student (Roll ${roll})`);
+      const prn = (att.prn && att.prn !== '-') 
         ? att.prn 
         : (reg?.prn || `12251ET${String(roll).padStart(3, '0')}`);
       const markedTime = att.timestamp 
