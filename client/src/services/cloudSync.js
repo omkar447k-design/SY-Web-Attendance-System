@@ -1,4 +1,4 @@
-﻿import { db } from './firebase';
+import { db } from './firebase';
 import { 
   collection, 
   doc, 
@@ -12,7 +12,7 @@ import {
   limit 
 } from 'firebase/firestore';
 
-const LOCAL_STORAGE_KEY = 'sy_firestore_cache_v1';
+const LOCAL_STORAGE_KEY = 'sy_firestore_cache_v2';
 let memoryCache = {
   students: [],
   sessions: [],
@@ -21,11 +21,31 @@ let memoryCache = {
   teachers: []
 };
 
-// Initialize cache from localStorage
+// Initialize cache from localStorage, preserving hodAccounts & teachers from older versions
 try {
   const local = localStorage.getItem(LOCAL_STORAGE_KEY);
   if (local) {
     memoryCache = { ...memoryCache, ...JSON.parse(local) };
+  } else {
+    // Purge older cache keys to ensure clean student state while preserving HOD
+    const olderKeys = ['sy_firestore_cache_v1', 'sy_cloud_cache_v12', 'sy_cloud_cache_v11', 'sy_cloud_cache_v10'];
+    for (const key of olderKeys) {
+      try {
+        const oldVal = localStorage.getItem(key);
+        if (oldVal) {
+          const parsed = JSON.parse(oldVal);
+          if (parsed.hodAccounts && Object.keys(parsed.hodAccounts).length > 0) {
+            memoryCache.hodAccounts = { ...memoryCache.hodAccounts, ...parsed.hodAccounts };
+          }
+          if (Array.isArray(parsed.teachers) && parsed.teachers.length > 0) {
+            memoryCache.teachers = parsed.teachers;
+          }
+          localStorage.removeItem(key);
+        }
+      } catch (e) {}
+    }
+    // Also clean out old device vault / session token if present
+    localStorage.removeItem('sy_hardware_device_vault');
   }
 } catch (e) {}
 
@@ -177,11 +197,9 @@ export const CloudSync = {
       snapshot.forEach(docSnap => {
         if (docSnap.exists()) fetched.push({ id: docSnap.id, ...docSnap.data() });
       });
-      if (fetched.length > 0) {
-        memoryCache.students = fetched;
-        persistLocalState(memoryCache);
-        list = fetched;
-      }
+      memoryCache.students = fetched;
+      persistLocalState(memoryCache);
+      list = fetched;
     } catch (e) {
       // Use memory cache
     }
@@ -301,11 +319,9 @@ export const CloudSync = {
       snapshot.forEach(docSnap => {
         if (docSnap.exists()) fetched.push({ id: docSnap.id, ...docSnap.data() });
       });
-      if (fetched.length > 0) {
-        memoryCache.sessions = fetched;
-        persistLocalState(memoryCache);
-        list = fetched;
-      }
+      memoryCache.sessions = fetched;
+      persistLocalState(memoryCache);
+      list = fetched;
     } catch (e) {}
 
     if (department && department !== 'all') {
@@ -356,11 +372,9 @@ export const CloudSync = {
       snapshot.forEach(docSnap => {
         if (docSnap.exists()) fetched.push({ id: docSnap.id, ...docSnap.data() });
       });
-      if (fetched.length > 0) {
-        memoryCache.logs = fetched;
-        persistLocalState(memoryCache);
-        list = fetched;
-      }
+      memoryCache.logs = fetched;
+      persistLocalState(memoryCache);
+      list = fetched;
     } catch (e) {}
 
     if (department && department !== 'all') {
@@ -398,11 +412,9 @@ export const CloudSync = {
       snapshot.forEach(docSnap => {
         if (docSnap.exists()) fetched.push({ id: docSnap.id, ...docSnap.data() });
       });
-      if (fetched.length > 0) {
-        memoryCache.teachers = fetched;
-        persistLocalState(memoryCache);
-        list = fetched;
-      }
+      memoryCache.teachers = fetched;
+      persistLocalState(memoryCache);
+      list = fetched;
     } catch (e) {}
 
     if (department && department !== 'all') {
