@@ -1,9 +1,9 @@
-# 🎓 SY Attendance System (Web & PWA Platform)
+#  Attendance System (Web & PWA Platform)
 **Department of Computer Engineering • 100% Free & Cross-Platform (iOS Safari, Android Chrome, Laptops)**
 
 ---
 
-## 🌟 Key Features
+##  Key Features
 
 1. **10-Second Dynamic 4-Digit Rolling PIN**:
    - Giant high-contrast numbers projected on the classroom screen.
@@ -28,7 +28,7 @@
 
 ---
 
-## 🚀 How to Run Locally
+##  How to Run Locally
 
 1. **Prerequisites**: Node.js LTS installed.
 2. **Launch with 1 Click**: Double-click `start.bat` in this folder.
@@ -46,8 +46,8 @@
 
 ---
 
-## 🔐 Default Access Credentials
+## Default Access Credentials
 
 - **Admin Portal**: Password: `admin`
 - **Faculty Portal**: Select any teacher from dropdown (e.g. `Dr. A. K. Sharma`)
-- **Student Portal**: Division: `SY-A`, Roll No: `24` (Omkar Pawar) or any roll `1` to `30`.
+- **Student Portal**: Division: `SY-A`, Roll No: `24` (omkar) or any roll `1` to `30`.
